@@ -104,7 +104,7 @@ export default function ContentPage() {
       setFetchError(errorMsg);
       showToast(errorMsg, 'error', 'Catalog Fetch Failed');
       setCatalog([]);
-    } fontally: {
+    } finally {
       setLoading(false);
     }
   };

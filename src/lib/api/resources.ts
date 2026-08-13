@@ -135,20 +135,15 @@ export const uploadContentImage = async (id: string, file: File, imageType: 'pos
   formData.append('file', file);
   formData.append('type', imageType);
 
-  try {
-    const res = await apiClient.post<ImageUploadResponse>(`/admin/content/${id}/upload-image`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress: (evt) => {
-        if (evt.total && onProgress) {
-          onProgress(Math.round((evt.loaded * 100) / evt.total));
-        }
-      },
-    });
-    return res.data;
-  } catch (err) {
-    // Return mock preview URL if API endpoint is unavailable in dev
-    return { image_url: URL.createObjectURL(file) };
-  }
+  const res = await apiClient.post<ImageUploadResponse>(`/admin/content/${id}/upload-image`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (evt) => {
+      if (evt.total && onProgress) {
+        onProgress(Math.round((evt.loaded * 100) / evt.total));
+      }
+    },
+  });
+  return res.data;
 };
 
 export const requestVideoUpload = async (id: string, fileData: { fileName: string; fileType: string; episodeId?: string }) => 
