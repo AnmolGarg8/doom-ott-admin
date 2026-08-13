@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import axios from 'axios';
 
 export interface OverviewReport {
   totalUsers: number;
@@ -15,23 +16,45 @@ export interface OverviewReport {
   }[];
 }
 
-export interface User {
+export interface VideoAsset {
   id: string;
-  name: string;
-  email: string;
-  role: string;
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
-  createdAt: string;
+  status: 'uploading' | 'processing' | 'ready' | 'failed';
+  videoUrl?: string;
+  progress?: number;
 }
 
 export interface ContentItem {
   id: string;
   title: string;
   type: 'MOVIE' | 'SHOW' | 'EPISODE';
-  genre: string;
-  views: number;
-  rating: number;
-  status: 'PUBLISHED' | 'DRAFT' | 'ARCHIVED';
+  synopsis?: string;
+  cast?: string[];
+  genre?: string[] | string;
+  language?: string;
+  content_rating?: string;
+  release_year?: number;
+  duration_minutes?: number;
+  duration_seconds?: number;
+  poster_url?: string;
+  backdrop_url?: string;
+  views?: number;
+  rating?: number;
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  video_asset?: VideoAsset;
+  createdAt?: string;
+}
+
+export interface VideoUploadResponse {
+  upload_url: string;
+  asset_id: string;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   createdAt: string;
 }
 
@@ -63,14 +86,41 @@ export interface NotificationPayload {
 // Reports API
 export const getOverviewReport = async () => (await apiClient.get<OverviewReport>('/admin/reports/overview')).data;
 
+// Content Management API
+export const getAdminContent = async (params?: { status?: string; type?: string }) => 
+  (await apiClient.get<ContentItem[]>('/admin/content', { params })).data;
+
+export const createAdminContent = async (data: Partial<ContentItem>) => 
+  (await apiClient.post<ContentItem>('/admin/content', data)).data;
+
+export const updateAdminContent = async (id: string, data: Partial<ContentItem>) => 
+  (await apiClient.patch<ContentItem>(`/admin/content/${id}`, data)).data;
+
+export const deleteAdminContent = async (id: string) => 
+  (await apiClient.delete<{ success: boolean }>(`/admin/content/${id}`)).data;
+
+export const requestVideoUpload = async (id: string, fileData: { fileName: string; fileType: string }) => 
+  (await apiClient.post<VideoUploadResponse>(`/admin/content/${id}/video-upload`, fileData)).data;
+
+export const uploadVideoFileToPresignedUrl = async (uploadUrl: string, file: File, onProgress?: (pct: number) => void) => {
+  await axios.put(uploadUrl, file, {
+    headers: { 'Content-Type': file.type },
+    onUploadProgress: (progressEvent) => {
+      if (progressEvent.total) {
+        const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        if (onProgress) onProgress(percent);
+      }
+    },
+  });
+};
+
+export const publishAdminContent = async (id: string) => 
+  (await apiClient.post<ContentItem>(`/admin/content/${id}/publish`)).data;
+
 // User API
 export const getUsers = async () => (await apiClient.get<User[]>('/users')).data;
 export const updateUserStatus = async (id: string, status: User['status']) => 
   (await apiClient.patch<User>(`/users/${id}`, { status })).data;
-
-// Content API
-export const getContentList = async () => (await apiClient.get<ContentItem[]>('/content')).data;
-export const createContent = async (data: Partial<ContentItem>) => (await apiClient.post<ContentItem>('/content', data)).data;
 
 // Subscription API
 export const getSubscriptions = async () => (await apiClient.get<Subscription[]>('/subscriptions')).data;
