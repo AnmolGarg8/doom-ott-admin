@@ -1,29 +1,25 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Search, Shield, Ban, CheckCircle, ChevronLeft, ChevronRight, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Search, Shield, Ban, CheckCircle, ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, AlertCircle, Users as UsersIcon } from 'lucide-react';
 import { getAdminUsers, toggleBlockUser, AdminUser } from '@/lib/api';
-
-const INITIAL_FALLBACK_USERS: AdminUser[] = [
-  { id: 'u-1', name: 'Alex Mercer', email: 'alex@example.com', role: 'SUBSCRIBER', is_blocked: false, created_at: '2026-01-15' },
-  { id: 'u-2', name: 'Samantha Vance', email: 'sam@example.com', role: 'SUBSCRIBER', is_blocked: false, created_at: '2026-02-10' },
-  { id: 'u-3', name: 'David Miller', email: 'david@example.com', role: 'SUBSCRIBER', is_blocked: true, created_at: '2026-03-01' },
-  { id: 'u-4', name: 'Elena Rostova', email: 'elena@example.com', role: 'ADMIN', is_blocked: false, created_at: '2025-11-20' },
-  { id: 'u-5', name: 'Test User', email: 'testuser@doomott.com', role: 'SUBSCRIBER', is_blocked: false, created_at: '2026-04-05' },
-];
+import { useToast } from '@/components/shared/Toast';
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<AdminUser[]>(INITIAL_FALLBACK_USERS);
+  const { showToast } = useToast();
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
   const [page, setPage] = useState<number>(1);
-  const [totalCount, setTotalCount] = useState<number>(INITIAL_FALLBACK_USERS.length);
+  const [totalCount, setTotalCount] = useState<number>(0);
 
   // Block modal state
   const [pendingBlockUser, setPendingBlockUser] = useState<AdminUser | null>(null);
 
   const fetchUsersList = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await getAdminUsers({ search, page, limit: 10 });
       if (res && 'users' in res && Array.isArray(res.users)) {
@@ -32,9 +28,16 @@ export default function UsersPage() {
       } else if (Array.isArray(res)) {
         setUsers(res);
         setTotalCount(res.length);
+      } else {
+        setUsers([]);
+        setTotalCount(0);
       }
-    } catch (err) {
-      console.warn('API /admin/users unreachable. Using local interactive state.');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || "Couldn't load user directory from backend server";
+      setFetchError(msg);
+      showToast(msg, 'error', 'Users Fetch Error');
+      setUsers([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
@@ -50,16 +53,22 @@ export default function UsersPage() {
 
     try {
       await toggleBlockUser(pendingBlockUser.id, targetStatus);
-    } catch (err) {
-      console.warn('Backend toggle block endpoint unavailable. Updating local state.');
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === pendingBlockUser.id ? { ...u, is_blocked: targetStatus } : u
+        )
+      );
+      showToast(
+        `User ${pendingBlockUser.email} was successfully ${targetStatus ? 'blocked' : 'unblocked'}.`,
+        'success'
+      );
+    } catch (err: any) {
+      const msg = err.response?.data?.message || "Couldn't update this user's access — please try again";
+      showToast(msg, 'error', 'Action Failed');
+      // Rollback optimistic update: user list remains untouched
+    } finally {
+      setPendingBlockUser(null);
     }
-
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === pendingBlockUser.id ? { ...u, is_blocked: targetStatus } : u
-      )
-    );
-    setPendingBlockUser(null);
   };
 
   const filteredUsers = users.filter(
@@ -75,6 +84,24 @@ export default function UsersPage() {
         <h2 className="text-2xl font-bold text-white tracking-tight">User Directory & Security</h2>
         <p className="text-sm text-[#B3B3B3]">Manage platform accounts and handle administrative block enforcement</p>
       </div>
+
+      {fetchError && (
+        <div className="p-4 bg-red-950/40 border border-red-900/50 rounded-2xl flex items-center justify-between text-sm text-red-200">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+            <div>
+              <p className="font-bold">User Directory Failure</p>
+              <p className="text-xs text-red-300/80">{fetchError}</p>
+            </div>
+          </div>
+          <button
+            onClick={fetchUsersList}
+            className="px-3.5 py-2 bg-red-900/50 hover:bg-red-800/60 border border-red-700/50 text-white rounded-lg text-xs font-semibold"
+          >
+            Retry Fetch
+          </button>
+        </div>
+      )}
 
       {/* Control bar */}
       <div className="flex justify-between items-center bg-[#0D0D0D] p-4 rounded-xl border border-[#2E2E2E]">
@@ -99,85 +126,106 @@ export default function UsersPage() {
         </button>
       </div>
 
-      {/* Users Table */}
+      {/* Users Table or Empty State */}
       <div className="bg-[#0D0D0D] border border-[#2E2E2E] rounded-xl overflow-hidden shadow-xl">
-        <table className="w-full text-left border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-[#2E2E2E] bg-[#1F1F1F]/40 text-[#B3B3B3]">
-              <th className="p-4 font-semibold">User</th>
-              <th className="p-4 font-semibold">Role</th>
-              <th className="p-4 font-semibold">Status</th>
-              <th className="p-4 font-semibold">Joined Date</th>
-              <th className="p-4 font-semibold text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#2E2E2E]">
-            {filteredUsers.map((user) => (
-              <tr key={user.id} className="hover:bg-[#1F1F1F]/50 transition-colors">
-                <td className="p-4 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-[#FFB300]/10 border border-[#FFB300]/30 flex items-center justify-center font-bold text-[#FFB300]">
-                    {user.name.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-white">{user.name}</p>
-                    <p className="text-xs text-[#B3B3B3]">{user.email}</p>
-                  </div>
-                </td>
-                <td className="p-4 text-[#B3B3B3]">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#000000] border border-[#2E2E2E] text-xs font-medium">
-                    {user.role === 'ADMIN' && <Shield className="w-3.5 h-3.5 text-[#FFB300]" />}
-                    {user.role}
-                  </span>
-                </td>
-                <td className="p-4">
-                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                    user.is_blocked 
-                      ? 'bg-red-500/10 text-red-400 border-red-500/20' 
-                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                  }`}>
-                    {user.is_blocked ? <Ban className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />}
-                    {user.is_blocked ? 'BLOCKED' : 'ACTIVE'}
-                  </span>
-                </td>
-                <td className="p-4 text-[#B3B3B3] text-xs">{user.created_at || '2026-01-01'}</td>
-                <td className="p-4 text-right">
-                  <button
-                    onClick={() => setPendingBlockUser(user)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                      user.is_blocked
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                        : 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
-                    }`}
-                  >
-                    {user.is_blocked ? 'Unblock User' : 'Block User'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* Pagination Bar */}
-        <div className="p-4 border-t border-[#2E2E2E] flex items-center justify-between text-xs text-[#B3B3B3]">
-          <span>Showing {filteredUsers.length} of {totalCount} users</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-1.5 rounded bg-[#000000] border border-[#2E2E2E] hover:text-white disabled:opacity-40"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="font-semibold text-white">Page {page}</span>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={filteredUsers.length < 10}
-              className="p-1.5 rounded bg-[#000000] border border-[#2E2E2E] hover:text-white disabled:opacity-40"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+        {loading ? (
+          <div className="p-12 text-center text-[#B3B3B3] space-y-3">
+            <RefreshCw className="w-8 h-8 text-[#FFB300] animate-spin mx-auto" />
+            <p className="text-sm">Fetching user accounts...</p>
           </div>
-        </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="p-12 text-center space-y-4">
+            <div className="w-16 h-16 rounded-full bg-[#1F1F1F] border border-[#2E2E2E] flex items-center justify-center text-[#B3B3B3] mx-auto">
+              <UsersIcon className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">No Users Found</h3>
+              <p className="text-xs text-[#B3B3B3] mt-1 max-w-sm mx-auto">
+                {fetchError ? 'Unable to reach backend user server.' : 'No registered user accounts match your search query.'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-[#2E2E2E] bg-[#1F1F1F]/40 text-[#B3B3B3]">
+                  <th className="p-4 font-semibold">User</th>
+                  <th className="p-4 font-semibold">Role</th>
+                  <th className="p-4 font-semibold">Status</th>
+                  <th className="p-4 font-semibold">Joined Date</th>
+                  <th className="p-4 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#2E2E2E]">
+                {filteredUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-[#1F1F1F]/50 transition-colors">
+                    <td className="p-4 flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-[#FFB300]/10 border border-[#FFB300]/30 flex items-center justify-center font-bold text-[#FFB300]">
+                        {user.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-white">{user.name}</p>
+                        <p className="text-xs text-[#B3B3B3]">{user.email}</p>
+                      </div>
+                    </td>
+                    <td className="p-4 text-[#B3B3B3]">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#000000] border border-[#2E2E2E] text-xs font-medium">
+                        {user.role === 'ADMIN' && <Shield className="w-3.5 h-3.5 text-[#FFB300]" />}
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                        user.is_blocked 
+                          ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      }`}>
+                        {user.is_blocked ? <Ban className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />}
+                        {user.is_blocked ? 'BLOCKED' : 'ACTIVE'}
+                      </span>
+                    </td>
+                    <td className="p-4 text-[#B3B3B3] text-xs">{user.created_at || '2026-01-01'}</td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => setPendingBlockUser(user)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                          user.is_blocked
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                            : 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
+                        }`}
+                      >
+                        {user.is_blocked ? 'Unblock User' : 'Block User'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Pagination Bar */}
+            <div className="p-4 border-t border-[#2E2E2E] flex items-center justify-between text-xs text-[#B3B3B3]">
+              <span>Showing {filteredUsers.length} of {totalCount} users</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="p-1.5 rounded bg-[#000000] border border-[#2E2E2E] hover:text-white disabled:opacity-40"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="font-semibold text-white">Page {page}</span>
+                <button
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={filteredUsers.length < 10}
+                  className="p-1.5 rounded bg-[#000000] border border-[#2E2E2E] hover:text-white disabled:opacity-40"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Confirmation Dialog for Block/Unblock */}

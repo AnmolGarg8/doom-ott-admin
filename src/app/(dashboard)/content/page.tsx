@@ -17,7 +17,10 @@ import {
   Zap, 
   CheckCircle2, 
   XCircle, 
-  ArrowLeft
+  ArrowLeft,
+  RefreshCw,
+  AlertCircle,
+  FolderOpen
 } from 'lucide-react';
 import { 
   getAdminContent, 
@@ -33,6 +36,7 @@ import {
   Episode, 
   ChecklistItem 
 } from '@/lib/api';
+import { useToast } from '@/components/shared/Toast';
 
 // Content Rating Friendly Mapping
 const RATING_MAPPINGS = [
@@ -47,56 +51,12 @@ const GENRE_CHIPS = [
   'Romance', 'Sci-Fi', 'Thriller'
 ];
 
-const INITIAL_DEMO_CATALOG: ContentItem[] = [
-  {
-    id: 'c-301',
-    title: 'Cyberpunk 2099',
-    type: 'MOVIE',
-    status: 'PUBLISHED',
-    release_year: 2025,
-    synopsis: 'A high-octane thriller set in a dystopian cybernetic metropolis.',
-    genre: ['Sci-Fi', 'Action'],
-    language: 'English',
-    content_rating: 'PG-13',
-    poster_url: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=300&q=80',
-    backdrop_url: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&q=80',
-    video_asset: { id: 'v-301', status: 'ready' },
-  },
-  {
-    id: 'c-302',
-    title: 'Shadow Realm: Chronicles',
-    type: 'SHOW',
-    status: 'DRAFT',
-    release_year: 2026,
-    synopsis: 'Dark forces collide in an ancient fantasy kingdom.',
-    genre: ['Fantasy', 'Drama'],
-    language: 'English',
-    content_rating: 'TV-MA',
-    poster_url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=300&q=80',
-    backdrop_url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80',
-    episodes: [
-      { id: 'ep-1', season_number: 1, episode_number: 1, title: 'The Awakening', video_asset: { id: 'v-ep1', status: 'ready' } },
-      { id: 'ep-2', season_number: 1, episode_number: 2, title: 'Dark Tides', video_asset: { id: 'v-ep2', status: 'processing' } },
-    ]
-  },
-  {
-    id: 'c-303',
-    title: 'Speed Rush: Quick Burst',
-    type: 'EPISODE',
-    status: 'ARCHIVED',
-    release_year: 2024,
-    synopsis: 'Supercharged 45-second high speed drifting clips.',
-    genre: ['Action'],
-    language: 'Spanish',
-    content_rating: 'G',
-    poster_url: 'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?w=300&q=80',
-    video_asset: { id: 'v-303', status: 'ready' }
-  }
-];
-
 export default function ContentPage() {
-  const [catalog, setCatalog] = useState<ContentItem[]>(INITIAL_DEMO_CATALOG);
+  const { showToast } = useToast();
+  const [catalog, setCatalog] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterType, setFilterType] = useState<string>('ALL');
   const [search, setSearch] = useState<string>('');
@@ -124,6 +84,7 @@ export default function ContentPage() {
   // Review & Publish State
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [isChecklistReady, setIsChecklistReady] = useState(false);
+  const [checklistError, setChecklistError] = useState<string | null>(null);
   const [publishSuccessMessage, setPublishSuccessMessage] = useState<string | null>(null);
 
   // Delete modal state
@@ -131,17 +92,19 @@ export default function ContentPage() {
 
   const fetchCatalog = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await getAdminContent({
         status: filterStatus !== 'ALL' ? filterStatus : undefined,
         type: filterType !== 'ALL' ? filterType : undefined
       });
-      if (Array.isArray(res) && res.length > 0) {
-        setCatalog(res);
-      }
-    } catch (err) {
-      console.warn('API /admin/content endpoint unreachable. Using interactive state.');
-    } finally {
+      setCatalog(Array.isArray(res) ? res : []);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || "Couldn't load your content catalog — check your connection and try again";
+      setFetchError(errorMsg);
+      showToast(errorMsg, 'error', 'Catalog Fetch Failed');
+      setCatalog([]);
+    } fontally: {
       setLoading(false);
     }
   };
@@ -167,7 +130,6 @@ export default function ContentPage() {
     return { label: 'Draft', class: 'bg-amber-500/10 text-amber-400 border-amber-500/30', dot: 'bg-amber-400' };
   };
 
-  // Open Wizard for new title
   const handleStartNewTitle = () => {
     setActiveItem({
       title: '',
@@ -185,7 +147,6 @@ export default function ContentPage() {
     setIsWizardOpen(true);
   };
 
-  // Open Wizard for editing
   const handleEditTitle = (item: ContentItem) => {
     setActiveItem(item);
     setEpisodes(item.episodes || []);
@@ -204,14 +165,18 @@ export default function ContentPage() {
     }
   };
 
-  // Step 1 Save & Auto-sync
+  // Step 1 Save & Auto-sync with explicit error reporting
   const handleSaveStep1 = async () => {
-    if (!activeItem.title || !activeItem.synopsis) return;
+    if (!activeItem.title || !activeItem.synopsis) {
+      showToast('Title and synopsis are required to save step 1', 'error', 'Validation Error');
+      return;
+    }
 
     try {
       if (activeItem.id) {
         await updateAdminContent(activeItem.id, activeItem);
         setCatalog((prev) => prev.map((c) => (c.id === activeItem.id ? ({ ...c, ...activeItem } as ContentItem) : c)));
+        showToast('Basic title information updated', 'success');
       } else {
         const created = await createAdminContent(activeItem);
         const newObj: ContentItem = {
@@ -221,25 +186,21 @@ export default function ContentPage() {
         };
         setActiveItem(newObj);
         setCatalog((prev) => [newObj, ...prev]);
+        showToast('Draft title created successfully', 'success');
       }
-    } catch (err) {
-      if (!activeItem.id) {
-        const newObj: ContentItem = {
-          ...(activeItem as ContentItem),
-          id: `c-${Date.now()}`,
-          status: 'DRAFT',
-        };
-        setActiveItem(newObj);
-        setCatalog((prev) => [newObj, ...prev]);
-      }
+      setWizardStep(2);
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Failed to save title details to backend server';
+      showToast(msg, 'error', 'Save Failed');
     }
-
-    setWizardStep(2);
   };
 
-  // Step 2 Image Upload Zone
+  // Step 2 Image Upload Zone (NO BLOB URL FALLBACK ON ERROR)
   const handleImageFileDrop = async (file: File, type: 'poster' | 'backdrop') => {
-    if (!activeItem.id) return;
+    if (!activeItem.id) {
+      showToast('Please complete Step 1 title basics first', 'info');
+      return;
+    }
     if (type === 'poster') setPosterProgress(10);
     else setBackdropProgress(10);
 
@@ -249,6 +210,10 @@ export default function ContentPage() {
         else setBackdropProgress(pct);
       });
 
+      if (!result?.image_url) {
+        throw new Error('Server returned invalid image URL');
+      }
+
       const updated = {
         ...activeItem,
         [type === 'poster' ? 'poster_url' : 'backdrop_url']: result.image_url,
@@ -256,21 +221,18 @@ export default function ContentPage() {
 
       setActiveItem(updated);
       setCatalog((prev) => prev.map((c) => (c.id === activeItem.id ? ({ ...c, ...updated } as ContentItem) : c)));
-    } catch (err) {
-      const previewUrl = URL.createObjectURL(file);
-      const updated = {
-        ...activeItem,
-        [type === 'poster' ? 'poster_url' : 'backdrop_url']: previewUrl,
-      };
-      setActiveItem(updated);
-      setCatalog((prev) => prev.map((c) => (c.id === activeItem.id ? ({ ...c, ...updated } as ContentItem) : c)));
+      showToast(`${type === 'poster' ? 'Poster' : 'Backdrop'} uploaded successfully!`, 'success');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || `Image upload failed for ${type}. Please check your connection and try again.`;
+      showToast(errorMsg, 'error', 'Upload Error');
+      // Do NOT set poster_url/backdrop_url on failure
     } finally {
       if (type === 'poster') setPosterProgress(null);
       else setBackdropProgress(null);
     }
   };
 
-  // Step 3 Video Upload
+  // Step 3 Video Upload with explicit failure handling
   const handleMovieVideoUpload = async () => {
     if (!movieVideoFile || !activeItem.id) return;
 
@@ -287,40 +249,26 @@ export default function ContentPage() {
         await uploadVideoFileToPresignedUrl(res.upload_url, movieVideoFile, (pct) => {
           setMovieVideoProgress(pct);
         });
+        setVideoStatusText('Processing (this usually takes a few minutes)...');
+        showToast('Video file uploaded! Processing transcoding pipeline.', 'info');
+        
+        const updatedAsset = { id: res.asset_id || 'v-new', status: 'ready' as const };
+        setActiveItem((prev) => ({ ...prev, video_asset: updatedAsset }));
+        setCatalog((prev) =>
+          prev.map((c) => (c.id === activeItem.id ? { ...c, video_asset: updatedAsset } : c))
+        );
+        setVideoStatusText('Ready to publish!');
       } else {
-        for (let i = 25; i <= 100; i += 25) {
-          await new Promise((r) => setTimeout(r, 200));
-          setMovieVideoProgress(i);
-        }
+        throw new Error('Upload URL not provided by server');
       }
-
-      setVideoStatusText('Processing (this usually takes a few minutes)...');
-      setTimeout(() => {
-        setVideoStatusText('Ready to publish!');
-        const updatedAsset = { id: 'v-new', status: 'ready' as const };
-        setActiveItem((prev) => ({ ...prev, video_asset: updatedAsset }));
-        setCatalog((prev) =>
-          prev.map((c) => (c.id === activeItem.id ? { ...c, video_asset: updatedAsset } : c))
-        );
-      }, 1500);
-    } catch (err) {
-      for (let i = 25; i <= 100; i += 25) {
-        await new Promise((r) => setTimeout(r, 150));
-        setMovieVideoProgress(i);
-      }
-      setVideoStatusText('Processing (this usually takes a few minutes)...');
-      setTimeout(() => {
-        setVideoStatusText('Ready to publish!');
-        const updatedAsset = { id: 'v-new', status: 'ready' as const };
-        setActiveItem((prev) => ({ ...prev, video_asset: updatedAsset }));
-        setCatalog((prev) =>
-          prev.map((c) => (c.id === activeItem.id ? { ...c, video_asset: updatedAsset } : c))
-        );
-      }, 1200);
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Video upload request failed. Server error.';
+      setVideoStatusText('Upload failed — please retry');
+      setMovieVideoProgress(null);
+      showToast(msg, 'error', 'Video Upload Failed');
     }
   };
 
-  // Add Series Episode
   const handleAddEpisode = () => {
     if (!newEpTitle) return;
     const newEp: Episode = {
@@ -336,11 +284,13 @@ export default function ContentPage() {
     setActiveItem((prev) => ({ ...prev, episodes: updatedEpList }));
     setNewEpTitle('');
     setNewEpNumber((n) => n + 1);
+    showToast(`Added Episode ${newEp.episode_number}: ${newEp.title}`, 'success');
   };
 
-  // Step 4 Checklist evaluation
+  // Step 4 Checklist evaluation — DISABLES PUBLISH IF SERVER CALL FAILS
   const loadChecklistData = async () => {
     if (!activeItem.id) return;
+    setChecklistError(null);
     try {
       const data = await getPublishChecklist(activeItem.id);
       if (data && Array.isArray(data.checklist)) {
@@ -348,35 +298,25 @@ export default function ContentPage() {
         setIsChecklistReady(data.is_ready);
         return;
       }
-    } catch (err) {}
+      throw new Error('Invalid checklist response from server');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Could not verify publish readiness checklist from backend server.';
+      setChecklistError(msg);
+      setIsChecklistReady(false); // ALWAYS disable publish when server verification fails
+      showToast(msg, 'error', 'Checklist Verification Failed');
 
-    // Dynamic plain language checklist evaluation fallback
-    const hasTitle = Boolean(activeItem.title && activeItem.title.length > 2);
-    const hasSynopsis = Boolean(activeItem.synopsis && activeItem.synopsis.length >= 10);
-    const hasPoster = Boolean(activeItem.poster_url);
-    const hasBackdrop = Boolean(activeItem.backdrop_url);
-    const hasVideoOrEpisodes = activeItem.type === 'SHOW' 
-      ? episodes.length > 0 
-      : Boolean(activeItem.video_asset?.status === 'ready' || videoStatusText === 'Ready to publish!');
-
-    const computedList: ChecklistItem[] = [
-      { key: 'title', label: 'Title and basic details provided', passed: hasTitle },
-      { key: 'synopsis', label: 'Synopsis and story description added', passed: hasSynopsis },
-      { key: 'poster', label: 'Poster image uploaded and previewed', passed: hasPoster },
-      { key: 'backdrop', label: 'Backdrop banner image uploaded', passed: hasBackdrop },
-      { key: 'video', label: activeItem.type === 'SHOW' ? 'At least one episode video configured' : 'Main video uploaded and ready to stream', passed: hasVideoOrEpisodes },
-    ];
-
-    const allPassed = computedList.every((c) => c.passed);
-    setChecklist(computedList);
-    setIsChecklistReady(allPassed);
+      // Show warning checklist items with failed state
+      setChecklist([
+        { key: 'server_check', label: 'Server readiness verification (Failed to communicate with server)', passed: false }
+      ]);
+    }
   };
 
   useEffect(() => {
     if (wizardStep === 4) {
       loadChecklistData();
     }
-  }, [wizardStep, activeItem, episodes, videoStatusText]);
+  }, [wizardStep, activeItem]);
 
   // Publish Action
   const handleConfirmPublish = async () => {
@@ -384,12 +324,15 @@ export default function ContentPage() {
 
     try {
       await publishAdminContent(activeItem.id);
-    } catch (err) {}
-
-    const updated = { ...activeItem, status: 'PUBLISHED' as const };
-    setActiveItem(updated);
-    setCatalog((prev) => prev.map((c) => (c.id === activeItem.id ? (updated as ContentItem) : c)));
-    setPublishSuccessMessage(`🎉 ${activeItem.title} is now live on DOOM OTT`);
+      const updated = { ...activeItem, status: 'PUBLISHED' as const };
+      setActiveItem(updated);
+      setCatalog((prev) => prev.map((c) => (c.id === activeItem.id ? (updated as ContentItem) : c)));
+      setPublishSuccessMessage(`🎉 ${activeItem.title} is now live on DOOM OTT`);
+      showToast(`${activeItem.title} is now published and live!`, 'success');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Failed to publish content on backend server';
+      showToast(msg, 'error', 'Publish Failed');
+    }
   };
 
   // Delete Handler
@@ -397,9 +340,13 @@ export default function ContentPage() {
     if (!deletingItem) return;
     try {
       await deleteAdminContent(deletingItem.id);
-    } catch (err) {}
-    setCatalog((prev) => prev.filter((c) => c.id !== deletingItem.id));
-    setDeletingItem(null);
+      setCatalog((prev) => prev.filter((c) => c.id !== deletingItem.id));
+      showToast(`Deleted '${deletingItem.title}' from catalog`, 'info');
+      setDeletingItem(null);
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Failed to delete title from backend server';
+      showToast(msg, 'error', 'Delete Failed');
+    }
   };
 
   const filteredCatalog = catalog.filter((c) => {
@@ -424,6 +371,24 @@ export default function ContentPage() {
           <Plus className="w-5 h-5 stroke-[3]" /> + Add New Title
         </button>
       </div>
+
+      {fetchError && (
+        <div className="p-4 bg-red-950/40 border border-red-900/50 rounded-2xl flex items-center justify-between text-sm text-red-200">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+            <div>
+              <p className="font-bold">Catalog Connection Failed</p>
+              <p className="text-xs text-red-300/80">{fetchError}</p>
+            </div>
+          </div>
+          <button
+            onClick={fetchCatalog}
+            className="px-3.5 py-2 bg-red-900/50 hover:bg-red-800/60 border border-red-700/50 text-white rounded-lg text-xs font-semibold"
+          >
+            Retry Catalog
+          </button>
+        </div>
+      )}
 
       {/* Filters Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 bg-[#0D0D0D] p-4 rounded-xl border border-[#2E2E2E]">
@@ -465,87 +430,114 @@ export default function ContentPage() {
         </div>
       </div>
 
-      {/* Catalog Table */}
+      {/* Catalog Table or Empty State */}
       <div className="bg-[#0D0D0D] border border-[#2E2E2E] rounded-xl overflow-hidden shadow-xl">
-        <table className="w-full text-left border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-[#2E2E2E] bg-[#1F1F1F]/40 text-[#B3B3B3]">
-              <th className="p-4 font-semibold">Poster</th>
-              <th className="p-4 font-semibold">Title</th>
-              <th className="p-4 font-semibold">Type</th>
-              <th className="p-4 font-semibold">Release Year</th>
-              <th className="p-4 font-semibold">Status</th>
-              <th className="p-4 font-semibold">Live on App</th>
-              <th className="p-4 font-semibold text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#2E2E2E]">
-            {filteredCatalog.map((item) => {
-              const statusBadge = getFriendlyStatusBadge(item.status);
-              return (
-                <tr key={item.id} className="hover:bg-[#1F1F1F]/50 transition-colors">
-                  <td className="p-4 w-16">
-                    {item.poster_url ? (
-                      <img 
-                        src={item.poster_url} 
-                        alt={item.title} 
-                        className="w-10 h-14 object-cover rounded border border-[#2E2E2E]"
-                      />
-                    ) : (
-                      <div className="w-10 h-14 bg-[#000000] border border-[#2E2E2E] rounded flex items-center justify-center text-[#B3B3B3]">
-                        <ImageIcon className="w-4 h-4" />
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-4 font-bold text-white">
-                    <p>{item.title}</p>
-                    <p className="text-xs font-normal text-[#B3B3B3] mt-0.5">
-                      {Array.isArray(item.genre) ? item.genre.join(', ') : item.genre}
-                    </p>
-                  </td>
-                  <td className="p-4 text-[#B3B3B3]">
-                    <span className="bg-[#000000] border border-[#2E2E2E] px-2.5 py-1 rounded text-xs font-semibold">
-                      {getFriendlyTypeLabel(item.type)}
-                    </span>
-                  </td>
-                  <td className="p-4 text-[#B3B3B3]">{item.release_year || 2026}</td>
-                  <td className="p-4">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${statusBadge.class}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`} />
-                      {statusBadge.label}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${item.status === 'PUBLISHED' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-zinc-600'}`} />
-                      <span className="text-xs text-[#B3B3B3]">
-                        {item.status === 'PUBLISHED' ? 'Visible' : 'Hidden'}
+        {loading ? (
+          <div className="p-12 text-center text-[#B3B3B3] space-y-3">
+            <RefreshCw className="w-8 h-8 text-[#FFB300] animate-spin mx-auto" />
+            <p className="text-sm">Fetching catalog titles from server...</p>
+          </div>
+        ) : filteredCatalog.length === 0 ? (
+          <div className="p-12 text-center space-y-4">
+            <div className="w-16 h-16 rounded-full bg-[#1F1F1F] border border-[#2E2E2E] flex items-center justify-center text-[#B3B3B3] mx-auto">
+              <FolderOpen className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">No Content Available</h3>
+              <p className="text-xs text-[#B3B3B3] mt-1 max-w-sm mx-auto">
+                {fetchError ? 'Unable to load data from backend server.' : 'No content titles match your current search or filter criteria.'}
+              </p>
+            </div>
+            {!fetchError && (
+              <button
+                onClick={handleStartNewTitle}
+                className="bg-[#FFB300] hover:bg-[#E5A000] text-black font-extrabold px-5 py-2.5 rounded-xl text-xs"
+              >
+                + Add Your First Title
+              </button>
+            )}
+          </div>
+        ) : (
+          <table className="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-[#2E2E2E] bg-[#1F1F1F]/40 text-[#B3B3B3]">
+                <th className="p-4 font-semibold">Poster</th>
+                <th className="p-4 font-semibold">Title</th>
+                <th className="p-4 font-semibold">Type</th>
+                <th className="p-4 font-semibold">Release Year</th>
+                <th className="p-4 font-semibold">Status</th>
+                <th className="p-4 font-semibold">Live on App</th>
+                <th className="p-4 font-semibold text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#2E2E2E]">
+              {filteredCatalog.map((item) => {
+                const statusBadge = getFriendlyStatusBadge(item.status);
+                return (
+                  <tr key={item.id} className="hover:bg-[#1F1F1F]/50 transition-colors">
+                    <td className="p-4 w-16">
+                      {item.poster_url ? (
+                        <img 
+                          src={item.poster_url} 
+                          alt={item.title} 
+                          className="w-10 h-14 object-cover rounded border border-[#2E2E2E]"
+                        />
+                      ) : (
+                        <div className="w-10 h-14 bg-[#000000] border border-[#2E2E2E] rounded flex items-center justify-center text-[#B3B3B3]">
+                          <ImageIcon className="w-4 h-4" />
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-4 font-bold text-white">
+                      <p>{item.title}</p>
+                      <p className="text-xs font-normal text-[#B3B3B3] mt-0.5">
+                        {Array.isArray(item.genre) ? item.genre.join(', ') : item.genre}
+                      </p>
+                    </td>
+                    <td className="p-4 text-[#B3B3B3]">
+                      <span className="bg-[#000000] border border-[#2E2E2E] px-2.5 py-1 rounded text-xs font-semibold">
+                        {getFriendlyTypeLabel(item.type)}
                       </span>
-                    </div>
-                  </td>
-                  <td className="p-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => handleEditTitle(item)}
-                        className="p-2 bg-[#000000] border border-[#2E2E2E] text-[#B3B3B3] hover:text-[#FFB300] hover:border-[#FFB300] rounded-lg transition-all"
-                        title="Resume / Edit Wizard"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setDeletingItem(item)}
-                        className="p-2 bg-[#000000] border border-[#2E2E2E] text-[#B3B3B3] hover:text-red-400 hover:border-red-400/50 rounded-lg transition-all"
-                        title="Delete Title"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    </td>
+                    <td className="p-4 text-[#B3B3B3]">{item.release_year || 2026}</td>
+                    <td className="p-4">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${statusBadge.class}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`} />
+                        {statusBadge.label}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-3 h-3 rounded-full ${item.status === 'PUBLISHED' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-zinc-600'}`} />
+                        <span className="text-xs text-[#B3B3B3]">
+                          {item.status === 'PUBLISHED' ? 'Visible' : 'Hidden'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleEditTitle(item)}
+                          className="p-2 bg-[#000000] border border-[#2E2E2E] text-[#B3B3B3] hover:text-[#FFB300] hover:border-[#FFB300] rounded-lg transition-all"
+                          title="Resume / Edit Wizard"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setDeletingItem(item)}
+                          className="p-2 bg-[#000000] border border-[#2E2E2E] text-[#B3B3B3] hover:text-red-400 hover:border-red-400/50 rounded-lg transition-all"
+                          title="Delete Title"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* GUIDED MULTI-STEP CREATION WIZARD MODAL */}
@@ -951,6 +943,13 @@ export default function ContentPage() {
                 ) : (
                   <div className="space-y-6">
                     <h4 className="font-bold text-white text-base">Publishing Readiness Checklist</h4>
+
+                    {checklistError && (
+                      <div className="p-3.5 bg-red-950/40 border border-red-900/50 rounded-xl text-xs text-red-300 font-semibold flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                        {checklistError}
+                      </div>
+                    )}
 
                     {/* Plain Language Checklist Items */}
                     <div className="space-y-3">

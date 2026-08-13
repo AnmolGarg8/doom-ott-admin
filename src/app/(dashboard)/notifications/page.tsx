@@ -4,8 +4,9 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Send, AlertTriangle, CheckCircle, BellRing } from 'lucide-react';
+import { Send, AlertTriangle, CheckCircle, BellRing, AlertCircle } from 'lucide-react';
 import { broadcastNotification } from '@/lib/api';
+import { useToast } from '@/components/shared/Toast';
 
 const broadcastSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters'),
@@ -16,7 +17,8 @@ const broadcastSchema = z.object({
 type BroadcastFormValues = z.infer<typeof broadcastSchema>;
 
 export default function NotificationsPage() {
-  const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
+  const { showToast } = useToast();
+  const [statusFeedback, setStatusFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [pendingPayload, setPendingPayload] = useState<BroadcastFormValues | null>(null);
 
   const {
@@ -42,12 +44,16 @@ export default function NotificationsPage() {
     if (!pendingPayload) return;
     try {
       await broadcastNotification(pendingPayload);
-      setStatusFeedback(`Successfully sent broadcast notification to ${pendingPayload.target_segment} segment!`);
-    } catch (err) {
-      setStatusFeedback(`Broadcast dispatched successfully to ${pendingPayload.target_segment} user base.`);
+      const successText = `Successfully sent broadcast notification to ${pendingPayload.target_segment} segment!`;
+      setStatusFeedback({ type: 'success', message: successText });
+      showToast(successText, 'success', 'Broadcast Dispatched');
+      reset();
+    } catch (err: any) {
+      const errorText = err.response?.data?.message || 'Broadcast failed to send — please check server connection and try again';
+      setStatusFeedback({ type: 'error', message: errorText });
+      showToast(errorText, 'error', 'Broadcast Failure');
     } finally {
       setPendingPayload(null);
-      reset();
     }
   };
 
@@ -59,9 +65,17 @@ export default function NotificationsPage() {
       </div>
 
       {statusFeedback && (
-        <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm font-semibold text-emerald-400 flex items-center gap-3">
-          <CheckCircle className="w-5 h-5 shrink-0" />
-          {statusFeedback}
+        <div className={`p-4 rounded-xl text-sm font-semibold flex items-center gap-3 border ${
+          statusFeedback.type === 'success'
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+            : 'bg-red-950/40 border-red-900/50 text-red-300'
+        }`}>
+          {statusFeedback.type === 'success' ? (
+            <CheckCircle className="w-5 h-5 shrink-0" />
+          ) : (
+            <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
+          )}
+          {statusFeedback.message}
         </div>
       )}
 

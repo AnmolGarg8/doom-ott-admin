@@ -14,7 +14,10 @@ import {
   Check, 
   X, 
   Monitor, 
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  FolderOpen
 } from 'lucide-react';
 import { 
   getAdminPlans, 
@@ -27,6 +30,7 @@ import {
   Plan, 
   AdminCoupon 
 } from '@/lib/api';
+import { useToast } from '@/components/shared/Toast';
 
 // Plan Schema
 const planSchema = z.object({
@@ -47,21 +51,12 @@ const couponSchema = z.object({
 type PlanFormValues = z.infer<typeof planSchema>;
 type CouponFormValues = z.infer<typeof couponSchema>;
 
-const INITIAL_PLANS: Plan[] = [
-  { id: 'p-1', name: 'Basic Plan', price: 9.99, resolution: '1080p Full HD', max_devices: 1, active_subscribers_count: 18400 },
-  { id: 'p-2', name: 'Premium Tier', price: 15.99, resolution: '4K Ultra HD + HDR', max_devices: 4, active_subscribers_count: 22100 },
-  { id: 'p-3', name: 'VIP Ultra', price: 24.99, resolution: '8K IMAX + Spatial Audio', max_devices: 8, active_subscribers_count: 5210 },
-];
-
-const INITIAL_COUPONS: AdminCoupon[] = [
-  { id: 'cop-1', code: 'WELCOME50', discount_percentage: 50, usage_count: 1240, usage_limit: 2000, valid_until: '2026-12-31', status: 'ACTIVE' },
-  { id: 'cop-2', code: 'SUMMER2026', discount_percentage: 30, usage_count: 850, usage_limit: 1000, valid_until: '2026-09-01', status: 'ACTIVE' },
-  { id: 'cop-3', code: 'VIPFREE', discount_percentage: 100, usage_count: 5000, usage_limit: 5000, valid_until: '2026-05-01', status: 'EXPIRED' },
-];
-
 export default function SubscriptionsPage() {
-  const [plans, setPlans] = useState<Plan[]>(INITIAL_PLANS);
-  const [coupons, setCoupons] = useState<AdminCoupon[]>(INITIAL_COUPONS);
+  const { showToast } = useToast();
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
 
   // Modals state
@@ -91,18 +86,32 @@ export default function SubscriptionsPage() {
   });
 
   const fetchPlansAndCoupons = async () => {
+    setLoading(true);
+    setFetchError(null);
+    let errorCount = 0;
+
     try {
       const plansRes = await getAdminPlans();
-      if (Array.isArray(plansRes) && plansRes.length > 0) setPlans(plansRes);
-    } catch (e) {
-      /* local state fallback */
+      setPlans(Array.isArray(plansRes) ? plansRes : []);
+    } catch (e: any) {
+      errorCount++;
+      setPlans([]);
     }
+
     try {
       const couponsRes = await getAdminCoupons();
-      if (Array.isArray(couponsRes) && couponsRes.length > 0) setCoupons(couponsRes);
-    } catch (e) {
-      /* local state fallback */
+      setCoupons(Array.isArray(couponsRes) ? couponsRes : []);
+    } catch (e: any) {
+      errorCount++;
+      setCoupons([]);
     }
+
+    if (errorCount > 0) {
+      const msg = 'Could not load subscription plans or coupons from backend server';
+      setFetchError(msg);
+      showToast(msg, 'error', 'Subscription Fetch Error');
+    }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -131,26 +140,29 @@ export default function SubscriptionsPage() {
       if (editingPlan) {
         await updateAdminPlan(editingPlan.id, data);
         setPlans((prev) => prev.map((p) => (p.id === editingPlan.id ? { ...p, ...data } : p)));
+        showToast(`Plan '${data.name}' updated successfully`, 'success');
       } else {
         const created = await createAdminPlan(data);
         const newP: Plan = { id: created?.id || `p-${Date.now()}`, ...data, active_subscribers_count: 0 };
         setPlans((prev) => [...prev, newP]);
+        showToast(`New plan '${data.name}' created`, 'success');
       }
-    } catch (e) {
-      if (editingPlan) {
-        setPlans((prev) => prev.map((p) => (p.id === editingPlan.id ? { ...p, ...data } : p)));
-      } else {
-        setPlans((prev) => [...prev, { id: `p-${Date.now()}`, ...data, active_subscribers_count: 0 }]);
-      }
+      setIsPlanModalOpen(false);
+    } catch (e: any) {
+      const msg = e.response?.data?.message || 'Failed to save subscription plan to backend server';
+      showToast(msg, 'error', 'Plan Save Failed');
     }
-    setIsPlanModalOpen(false);
   };
 
   const handleDeletePlan = async (id: string) => {
     try {
       await deleteAdminPlan(id);
-    } catch (e) {}
-    setPlans((prev) => prev.filter((p) => p.id !== id));
+      setPlans((prev) => prev.filter((p) => p.id !== id));
+      showToast('Plan deleted successfully', 'info');
+    } catch (e: any) {
+      const msg = e.response?.data?.message || 'Failed to delete plan from backend server';
+      showToast(msg, 'error', 'Delete Failed');
+    }
   };
 
   // Coupon Handlers
@@ -166,19 +178,26 @@ export default function SubscriptionsPage() {
 
     try {
       const created = await createAdminCoupon(payload);
-      setCoupons((prev) => [created || ({ id: `cop-${Date.now()}`, ...payload } as AdminCoupon), ...prev]);
-    } catch (e) {
-      setCoupons((prev) => [{ id: `cop-${Date.now()}`, ...payload } as AdminCoupon, ...prev]);
+      const newCoupon = created || ({ id: `cop-${Date.now()}`, ...payload } as AdminCoupon);
+      setCoupons((prev) => [newCoupon, ...prev]);
+      showToast(`Promo coupon '${payload.code}' created`, 'success');
+      setIsCouponModalOpen(false);
+      resetCoupon();
+    } catch (e: any) {
+      const msg = e.response?.data?.message || 'Failed to create promo coupon on backend server';
+      showToast(msg, 'error', 'Coupon Creation Failed');
     }
-    setIsCouponModalOpen(false);
-    resetCoupon();
   };
 
   const handleDeleteCoupon = async (id: string) => {
     try {
       await deleteAdminCoupon(id);
-    } catch (e) {}
-    setCoupons((prev) => prev.filter((c) => c.id !== id));
+      setCoupons((prev) => prev.filter((c) => c.id !== id));
+      showToast('Coupon deleted successfully', 'info');
+    } catch (e: any) {
+      const msg = e.response?.data?.message || 'Failed to delete coupon from backend server';
+      showToast(msg, 'error', 'Delete Failed');
+    }
   };
 
   const handleCopyCode = (code: string, id: string) => {
@@ -190,10 +209,36 @@ export default function SubscriptionsPage() {
   return (
     <div className="space-y-10">
       {/* Page Title */}
-      <div>
-        <h2 className="text-2xl font-bold text-white tracking-tight">Subscriptions & Coupon Management</h2>
-        <p className="text-sm text-[#B3B3B3]">Manage subscription pricing tiers, maximum device limits, and promo coupons</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Subscriptions & Coupon Management</h2>
+          <p className="text-sm text-[#B3B3B3]">Manage subscription pricing tiers, maximum device limits, and promo coupons</p>
+        </div>
+        <button
+          onClick={fetchPlansAndCoupons}
+          className="flex items-center gap-2 px-3.5 py-2 bg-[#0D0D0D] border border-[#2E2E2E] hover:border-[#FFB300] text-white rounded-lg text-xs"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 text-[#FFB300] ${loading ? 'animate-spin' : ''}`} /> Refresh
+        </button>
       </div>
+
+      {fetchError && (
+        <div className="p-4 bg-red-950/40 border border-red-900/50 rounded-2xl flex items-center justify-between text-sm text-red-200">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+            <div>
+              <p className="font-bold">Subscription Connection Failed</p>
+              <p className="text-xs text-red-300/80">{fetchError}</p>
+            </div>
+          </div>
+          <button
+            onClick={fetchPlansAndCoupons}
+            className="px-3 py-1.5 bg-red-900/50 hover:bg-red-800/60 border border-red-700/50 text-white rounded-lg text-xs font-semibold"
+          >
+            Retry Connection
+          </button>
+        </div>
+      )}
 
       {/* SECTION 1: PLANS */}
       <div className="space-y-6">
@@ -209,50 +254,58 @@ export default function SubscriptionsPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {plans.map((plan) => (
-            <div 
-              key={plan.id} 
-              className="bg-[#0D0D0D] border border-[#2E2E2E] p-6 rounded-2xl relative hover:border-[#FFB300] transition-all flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-lg font-extrabold text-white">{plan.name}</h4>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleOpenPlanModal(plan)}
-                      className="p-1.5 text-[#B3B3B3] hover:text-[#FFB300]"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeletePlan(plan.id)}
-                      className="p-1.5 text-[#B3B3B3] hover:text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+        {plans.length === 0 ? (
+          <div className="bg-[#0D0D0D] border border-[#2E2E2E] rounded-2xl p-8 text-center space-y-3">
+            <FolderOpen className="w-8 h-8 text-[#B3B3B3] mx-auto" />
+            <h4 className="text-base font-bold text-white">No Subscription Plans Configured</h4>
+            <p className="text-xs text-[#B3B3B3]">Add your first pricing tier to enable customer billing.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {plans.map((plan) => (
+              <div 
+                key={plan.id} 
+                className="bg-[#0D0D0D] border border-[#2E2E2E] p-6 rounded-2xl relative hover:border-[#FFB300] transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-lg font-extrabold text-white">{plan.name}</h4>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenPlanModal(plan)}
+                        className="p-1.5 text-[#B3B3B3] hover:text-[#FFB300]"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeletePlan(plan.id)}
+                        className="p-1.5 text-[#B3B3B3] hover:text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
+
+                  <div className="text-3xl font-black text-[#FFB300] mb-4">${plan.price.toFixed(2)}<span className="text-xs text-[#B3B3B3] font-normal">/mo</span></div>
+
+                  <ul className="space-y-2.5 text-xs text-[#B3B3B3] mb-6">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-[#FFB300]" /> {plan.resolution}
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Monitor className="w-4 h-4 text-[#FFB300]" /> Max Concurrent Devices: <strong className="text-white">{plan.max_devices}</strong>
+                    </li>
+                  </ul>
                 </div>
 
-                <div className="text-3xl font-black text-[#FFB300] mb-4">${plan.price.toFixed(2)}<span className="text-xs text-[#B3B3B3] font-normal">/mo</span></div>
-
-                <ul className="space-y-2.5 text-xs text-[#B3B3B3] mb-6">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#FFB300]" /> {plan.resolution}
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Monitor className="w-4 h-4 text-[#FFB300]" /> Max Concurrent Devices: <strong className="text-white">{plan.max_devices}</strong>
-                  </li>
-                </ul>
+                <div className="pt-3 border-t border-[#2E2E2E] flex justify-between text-xs text-[#B3B3B3]">
+                  <span>Active Users:</span>
+                  <span className="font-bold text-white">{plan.active_subscribers_count || 0}</span>
+                </div>
               </div>
-
-              <div className="pt-3 border-t border-[#2E2E2E] flex justify-between text-xs text-[#B3B3B3]">
-                <span>Active Users:</span>
-                <span className="font-bold text-white">{plan.active_subscribers_count || 0}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* SECTION 2: COUPONS */}
@@ -269,57 +322,65 @@ export default function SubscriptionsPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {coupons.map((coupon) => {
-            const usageCount = coupon.usage_count ?? coupon.usageCount ?? 0;
-            const usageLimit = coupon.usage_limit || 1000;
-            return (
-              <div 
-                key={coupon.id} 
-                className="bg-[#0D0D0D] border border-[#2E2E2E] p-6 rounded-2xl relative hover:border-[#FFB300] transition-colors"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold px-2.5 py-1 rounded bg-[#FFB300]/10 text-[#FFB300] border border-[#FFB300]/30">
-                    {coupon.discount_percentage || coupon.discountPercentage}% OFF
-                  </span>
-                  <button
-                    onClick={() => handleDeleteCoupon(coupon.id)}
-                    className="p-1 text-[#B3B3B3] hover:text-red-400"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="bg-[#000000] border border-[#2E2E2E] p-3 rounded-xl flex items-center justify-between mb-4">
-                  <span className="font-mono font-bold text-lg text-white tracking-wider">{coupon.code}</span>
-                  <button
-                    onClick={() => handleCopyCode(coupon.code, coupon.id)}
-                    className="text-[#B3B3B3] hover:text-[#FFB300]"
-                  >
-                    {copiedCodeId === coupon.id ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                {/* Usage Count vs Limit */}
-                <div className="space-y-1.5 text-xs text-[#B3B3B3]">
-                  <div className="flex justify-between">
-                    <span>Usage:</span>
-                    <span className="font-bold text-white">{usageCount} / {usageLimit}</span>
+        {coupons.length === 0 ? (
+          <div className="bg-[#0D0D0D] border border-[#2E2E2E] rounded-2xl p-8 text-center space-y-3">
+            <Ticket className="w-8 h-8 text-[#B3B3B3] mx-auto" />
+            <h4 className="text-base font-bold text-white">No Promo Coupons Configured</h4>
+            <p className="text-xs text-[#B3B3B3]">Create discount codes for marketing campaigns.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {coupons.map((coupon) => {
+              const usageCount = coupon.usage_count ?? coupon.usageCount ?? 0;
+              const usageLimit = coupon.usage_limit || 1000;
+              return (
+                <div 
+                  key={coupon.id} 
+                  className="bg-[#0D0D0D] border border-[#2E2E2E] p-6 rounded-2xl relative hover:border-[#FFB300] transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold px-2.5 py-1 rounded bg-[#FFB300]/10 text-[#FFB300] border border-[#FFB300]/30">
+                      {coupon.discount_percentage || coupon.discountPercentage}% OFF
+                    </span>
+                    <button
+                      onClick={() => handleDeleteCoupon(coupon.id)}
+                      className="p-1 text-[#B3B3B3] hover:text-red-400"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  <div className="w-full h-1.5 bg-[#1F1F1F] rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-[#FFB300]" 
-                      style={{ width: `${Math.min(100, (usageCount / usageLimit) * 100)}%` }} 
-                    />
+
+                  <div className="bg-[#000000] border border-[#2E2E2E] p-3 rounded-xl flex items-center justify-between mb-4">
+                    <span className="font-mono font-bold text-lg text-white tracking-wider">{coupon.code}</span>
+                    <button
+                      onClick={() => handleCopyCode(coupon.code, coupon.id)}
+                      className="text-[#B3B3B3] hover:text-[#FFB300]"
+                    >
+                      {copiedCodeId === coupon.id ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
                   </div>
-                  <p className="text-[11px] text-[#B3B3B3] pt-1">
-                    Valid Until: <strong className="text-white">{coupon.valid_until || coupon.validUntil || '2026-12-31'}</strong>
-                  </p>
+
+                  {/* Usage Count vs Limit */}
+                  <div className="space-y-1.5 text-xs text-[#B3B3B3]">
+                    <div className="flex justify-between">
+                      <span>Usage:</span>
+                      <span className="font-bold text-white">{usageCount} / {usageLimit}</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-[#1F1F1F] rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-[#FFB300]" 
+                        style={{ width: `${Math.min(100, (usageCount / usageLimit) * 100)}%` }} 
+                      />
+                    </div>
+                    <p className="text-[11px] text-[#B3B3B3] pt-1">
+                      Valid Until: <strong className="text-white">{coupon.valid_until || coupon.validUntil || '2026-12-31'}</strong>
+                    </p>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* PLAN FORM MODAL */}
