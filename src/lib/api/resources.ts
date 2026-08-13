@@ -49,38 +49,45 @@ export interface VideoUploadResponse {
   asset_id: string;
 }
 
-export interface User {
+export interface AdminUser {
   id: string;
   name: string;
   email: string;
   role: string;
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
-  createdAt: string;
+  is_blocked: boolean;
+  status?: 'ACTIVE' | 'BLOCKED' | 'SUSPENDED';
+  created_at?: string;
+  createdAt?: string;
 }
 
-export interface Subscription {
+export interface Plan {
   id: string;
-  userEmail: string;
-  plan: 'BASIC' | 'PREMIUM' | 'VIP';
-  amount: number;
-  status: 'ACTIVE' | 'CANCELLED' | 'EXPIRED';
-  startDate: string;
-  endDate: string;
+  name: string;
+  price: number;
+  resolution: string;
+  max_devices: number;
+  active_subscribers_count?: number;
 }
 
-export interface Coupon {
+export interface AdminCoupon {
   id: string;
   code: string;
-  discountPercentage: number;
-  validUntil: string;
-  usageCount: number;
+  discount_percentage: number;
+  discountPercentage?: number;
+  valid_until?: string;
+  validUntil?: string;
+  usage_count: number;
+  usageCount?: number;
+  usage_limit?: number;
   status: 'ACTIVE' | 'EXPIRED';
 }
 
-export interface NotificationPayload {
+export interface BroadcastNotificationPayload {
   title: string;
-  message: string;
-  targetUserGroup: 'ALL' | 'PREMIUM' | 'INACTIVE';
+  body: string;
+  message?: string;
+  target_segment: 'ALL' | 'PREMIUM' | 'INACTIVE';
+  targetUserGroup?: 'ALL' | 'PREMIUM' | 'INACTIVE';
 }
 
 // Reports API
@@ -117,18 +124,24 @@ export const uploadVideoFileToPresignedUrl = async (uploadUrl: string, file: Fil
 export const publishAdminContent = async (id: string) => 
   (await apiClient.post<ContentItem>(`/admin/content/${id}/publish`)).data;
 
-// User API
-export const getUsers = async () => (await apiClient.get<User[]>('/users')).data;
-export const updateUserStatus = async (id: string, status: User['status']) => 
-  (await apiClient.patch<User>(`/users/${id}`, { status })).data;
+// User Management API
+export const getAdminUsers = async (params?: { search?: string; page?: number; limit?: number }) => 
+  (await apiClient.get<{ users: AdminUser[]; total: number; page: number } | AdminUser[]>('/admin/users', { params })).data;
 
-// Subscription API
-export const getSubscriptions = async () => (await apiClient.get<Subscription[]>('/subscriptions')).data;
+export const toggleBlockUser = async (id: string, is_blocked: boolean) => 
+  (await apiClient.patch<AdminUser>(`/admin/users/${id}/block`, { is_blocked })).data;
 
-// Coupon API
-export const getCoupons = async () => (await apiClient.get<Coupon[]>('/coupons')).data;
-export const createCoupon = async (data: Partial<Coupon>) => (await apiClient.post<Coupon>('/coupons', data)).data;
+// Plans API
+export const getAdminPlans = async () => (await apiClient.get<Plan[]>('/admin/plans')).data;
+export const createAdminPlan = async (data: Partial<Plan>) => (await apiClient.post<Plan>('/admin/plans', data)).data;
+export const updateAdminPlan = async (id: string, data: Partial<Plan>) => (await apiClient.patch<Plan>(`/admin/plans/${id}`, data)).data;
+export const deleteAdminPlan = async (id: string) => (await apiClient.delete<{ success: boolean }>(`/admin/plans/${id}`)).data;
 
-// Notification API
-export const sendNotification = async (payload: NotificationPayload) => 
-  (await apiClient.post<{ success: boolean }>('/notifications/send', payload)).data;
+// Coupons API
+export const getAdminCoupons = async () => (await apiClient.get<AdminCoupon[]>('/admin/coupons')).data;
+export const createAdminCoupon = async (data: Partial<AdminCoupon>) => (await apiClient.post<AdminCoupon>('/admin/coupons', data)).data;
+export const deleteAdminCoupon = async (id: string) => (await apiClient.delete<{ success: boolean }>(`/admin/coupons/${id}`)).data;
+
+// Broadcast Notifications API
+export const broadcastNotification = async (payload: BroadcastNotificationPayload) => 
+  (await apiClient.post<{ success: boolean }>(`/admin/notifications/broadcast`, payload)).data;
