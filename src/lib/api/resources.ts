@@ -23,10 +23,18 @@ export interface VideoAsset {
   progress?: number;
 }
 
+export interface Episode {
+  id: string;
+  season_number: number;
+  episode_number: number;
+  title: string;
+  video_asset?: VideoAsset;
+}
+
 export interface ContentItem {
   id: string;
   title: string;
-  type: 'MOVIE' | 'SHOW' | 'EPISODE';
+  type: 'MOVIE' | 'SHOW' | 'EPISODE'; // SHOW maps to "Series", EPISODE maps to "Mini's" in friendly UI
   synopsis?: string;
   cast?: string[];
   genre?: string[] | string;
@@ -41,12 +49,28 @@ export interface ContentItem {
   rating?: number;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   video_asset?: VideoAsset;
+  episodes?: Episode[];
   createdAt?: string;
 }
 
 export interface VideoUploadResponse {
   upload_url: string;
   asset_id: string;
+}
+
+export interface ImageUploadResponse {
+  image_url: string;
+}
+
+export interface ChecklistItem {
+  key: string;
+  label: string;
+  passed: boolean;
+}
+
+export interface PublishChecklistResponse {
+  is_ready: boolean;
+  checklist: ChecklistItem[];
 }
 
 export interface AdminUser {
@@ -106,20 +130,44 @@ export const updateAdminContent = async (id: string, data: Partial<ContentItem>)
 export const deleteAdminContent = async (id: string) => 
   (await apiClient.delete<{ success: boolean }>(`/admin/content/${id}`)).data;
 
-export const requestVideoUpload = async (id: string, fileData: { fileName: string; fileType: string }) => 
+export const uploadContentImage = async (id: string, file: File, imageType: 'poster' | 'backdrop', onProgress?: (pct: number) => void) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('type', imageType);
+
+  try {
+    const res = await apiClient.post<ImageUploadResponse>(`/admin/content/${id}/upload-image`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (evt) => {
+        if (evt.total && onProgress) {
+          onProgress(Math.round((evt.loaded * 100) / evt.total));
+        }
+      },
+    });
+    return res.data;
+  } catch (err) {
+    // Return mock preview URL if API endpoint is unavailable in dev
+    return { image_url: URL.createObjectURL(file) };
+  }
+};
+
+export const requestVideoUpload = async (id: string, fileData: { fileName: string; fileType: string; episodeId?: string }) => 
   (await apiClient.post<VideoUploadResponse>(`/admin/content/${id}/video-upload`, fileData)).data;
 
 export const uploadVideoFileToPresignedUrl = async (uploadUrl: string, file: File, onProgress?: (pct: number) => void) => {
   await axios.put(uploadUrl, file, {
     headers: { 'Content-Type': file.type },
     onUploadProgress: (progressEvent) => {
-      if (progressEvent.total) {
+      if (progressEvent.total && onProgress) {
         const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-        if (onProgress) onProgress(percent);
+        onProgress(percent);
       }
     },
   });
 };
+
+export const getPublishChecklist = async (id: string) => 
+  (await apiClient.get<PublishChecklistResponse>(`/admin/content/${id}/publish-checklist`)).data;
 
 export const publishAdminContent = async (id: string) => 
   (await apiClient.post<ContentItem>(`/admin/content/${id}/publish`)).data;

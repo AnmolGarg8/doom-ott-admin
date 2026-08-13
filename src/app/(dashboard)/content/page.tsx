@@ -1,64 +1,55 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import React, { useState, useEffect } from 'react';
 import { 
-  Film, 
   Plus, 
   Search, 
-  Filter, 
   Edit3, 
   Trash2, 
-  UploadCloud, 
-  CheckCircle, 
-  AlertCircle, 
+  Image as ImageIcon, 
   X, 
-  Loader2,
-  Play,
-  Globe,
-  Star,
-  Image as ImageIcon
+  ChevronRight, 
+  UploadCloud, 
+  AlertTriangle, 
+  Sparkles, 
+  Film, 
+  Tv, 
+  Zap, 
+  CheckCircle2, 
+  XCircle, 
+  ArrowLeft
 } from 'lucide-react';
 import { 
   getAdminContent, 
   createAdminContent, 
   updateAdminContent, 
   deleteAdminContent, 
+  uploadContentImage, 
   requestVideoUpload, 
-  uploadVideoFileToPresignedUrl,
-  publishAdminContent,
-  ContentItem 
+  uploadVideoFileToPresignedUrl, 
+  getPublishChecklist, 
+  publishAdminContent, 
+  ContentItem, 
+  Episode, 
+  ChecklistItem 
 } from '@/lib/api';
 
-// Content Form Schema
-const contentSchema = z.object({
-  title: z.string().min(2, 'Title is required'),
-  synopsis: z.string().min(10, 'Synopsis must be at least 10 characters'),
-  type: z.enum(['MOVIE', 'SHOW', 'EPISODE']),
-  genre: z.array(z.string()).min(1, 'Select at least one genre'),
-  cast: z.string().optional(), // Comma separated for input
-  language: z.string().min(1, 'Language is required'),
-  content_rating: z.string().min(1, 'Content rating is required'),
-  release_year: z.coerce.number().min(1900).max(2100),
-  duration_minutes: z.coerce.number().optional(),
-  duration_seconds: z.coerce.number().optional(),
-  poster_url: z.string().url('Must be a valid URL').or(z.literal('')),
-  backdrop_url: z.string().url('Must be a valid URL').or(z.literal('')),
-});
+// Content Rating Friendly Mapping
+const RATING_MAPPINGS = [
+  { label: 'All Ages', code: 'G', desc: 'Suitable for all audiences' },
+  { label: 'Teens', code: 'PG-13', desc: 'May be unsuitable for children under 13' },
+  { label: 'Mature', code: 'TV-MA', desc: 'Intended for mature audiences' },
+];
 
-type ContentFormValues = z.infer<typeof contentSchema>;
-
-const GENRE_OPTIONS = [
+const GENRE_CHIPS = [
   'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 
   'Documentary', 'Drama', 'Fantasy', 'Horror', 'Mystery', 
   'Romance', 'Sci-Fi', 'Thriller'
 ];
 
-const INITIAL_FALLBACK_CONTENT: ContentItem[] = [
+const INITIAL_DEMO_CATALOG: ContentItem[] = [
   {
-    id: 'c-101',
+    id: 'c-301',
     title: 'Cyberpunk 2099',
     type: 'MOVIE',
     status: 'PUBLISHED',
@@ -67,16 +58,13 @@ const INITIAL_FALLBACK_CONTENT: ContentItem[] = [
     genre: ['Sci-Fi', 'Action'],
     language: 'English',
     content_rating: 'PG-13',
-    duration_minutes: 124,
     poster_url: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=300&q=80',
     backdrop_url: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&q=80',
-    video_asset: { id: 'v-101', status: 'ready', videoUrl: 'https://example.com/stream/101.mp4' },
-    views: 342100,
-    rating: 4.8
+    video_asset: { id: 'v-301', status: 'ready' },
   },
   {
-    id: 'c-102',
-    title: 'Shadow Realm: Season 1',
+    id: 'c-302',
+    title: 'Shadow Realm: Chronicles',
     type: 'SHOW',
     status: 'DRAFT',
     release_year: 2026,
@@ -84,305 +72,341 @@ const INITIAL_FALLBACK_CONTENT: ContentItem[] = [
     genre: ['Fantasy', 'Drama'],
     language: 'English',
     content_rating: 'TV-MA',
-    duration_minutes: 45,
     poster_url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=300&q=80',
-    video_asset: { id: 'v-102', status: 'processing', progress: 65 },
-    views: 89400,
-    rating: 4.5
+    backdrop_url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80',
+    episodes: [
+      { id: 'ep-1', season_number: 1, episode_number: 1, title: 'The Awakening', video_asset: { id: 'v-ep1', status: 'ready' } },
+      { id: 'ep-2', season_number: 1, episode_number: 2, title: 'Dark Tides', video_asset: { id: 'v-ep2', status: 'processing' } },
+    ]
   },
   {
-    id: 'c-103',
-    title: 'Neon Velocity',
-    type: 'MOVIE',
+    id: 'c-303',
+    title: 'Speed Rush: Quick Burst',
+    type: 'EPISODE',
     status: 'ARCHIVED',
     release_year: 2024,
-    synopsis: 'Underground street racers fight for turf in neon lights.',
-    genre: ['Action', 'Thriller'],
+    synopsis: 'Supercharged 45-second high speed drifting clips.',
+    genre: ['Action'],
     language: 'Spanish',
-    content_rating: 'R',
-    duration_minutes: 110,
+    content_rating: 'G',
     poster_url: 'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?w=300&q=80',
-    video_asset: { id: 'v-103', status: 'ready' },
-    views: 215600,
-    rating: 4.1
+    video_asset: { id: 'v-303', status: 'ready' }
   }
 ];
 
 export default function ContentPage() {
-  const [contentList, setContentList] = useState<ContentItem[]>(INITIAL_FALLBACK_CONTENT);
+  const [catalog, setCatalog] = useState<ContentItem[]>(INITIAL_DEMO_CATALOG);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterType, setFilterType] = useState<string>('ALL');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [search, setSearch] = useState<string>('');
 
-  // Modals state
-  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [editingContent, setEditingContent] = useState<ContentItem | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Wizard state
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<number>(1);
+  const [activeItem, setActiveItem] = useState<Partial<ContentItem>>({});
 
-  // Video Upload State
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'ready' | 'failed'>('idle');
+  // Image Upload States
+  const [posterProgress, setPosterProgress] = useState<number | null>(null);
+  const [backdropProgress, setBackdropProgress] = useState<number | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    reset,
-    formState: { errors, isSubmitting }
-  } = useForm<ContentFormValues>({
-    resolver: zodResolver(contentSchema),
-    defaultValues: {
-      title: '',
-      synopsis: '',
-      type: 'MOVIE',
-      genre: ['Action'],
-      cast: '',
-      language: 'English',
-      content_rating: 'PG-13',
-      release_year: new Date().getFullYear(),
-      duration_minutes: 120,
-      poster_url: '',
-      backdrop_url: '',
-    }
-  });
+  // Video Upload States
+  const [movieVideoFile, setMovieVideoFile] = useState<File | null>(null);
+  const [movieVideoProgress, setMovieVideoProgress] = useState<number | null>(null);
+  const [videoStatusText, setVideoStatusText] = useState<string>('No video uploaded yet');
 
-  const watchType = watch('type');
-  const watchGenres = watch('genre') || [];
+  // Series Episodes State
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [newEpTitle, setNewEpTitle] = useState('');
+  const [newEpSeason, setNewEpSeason] = useState(1);
+  const [newEpNumber, setNewEpNumber] = useState(1);
 
-  const fetchContent = async () => {
+  // Review & Publish State
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [isChecklistReady, setIsChecklistReady] = useState(false);
+  const [publishSuccessMessage, setPublishSuccessMessage] = useState<string | null>(null);
+
+  // Delete modal state
+  const [deletingItem, setDeletingItem] = useState<ContentItem | null>(null);
+
+  const fetchCatalog = async () => {
     setLoading(true);
     try {
-      const data = await getAdminContent({
+      const res = await getAdminContent({
         status: filterStatus !== 'ALL' ? filterStatus : undefined,
         type: filterType !== 'ALL' ? filterType : undefined
       });
-      if (Array.isArray(data) && data.length > 0) {
-        setContentList(data);
+      if (Array.isArray(res) && res.length > 0) {
+        setCatalog(res);
       }
     } catch (err) {
-      console.warn('Backend API offline or /admin/content endpoint missing. Using interactive local state.');
+      console.warn('API /admin/content endpoint unreachable. Using interactive state.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchContent();
+    fetchCatalog();
   }, [filterStatus, filterType]);
 
-  const handleOpenNewModal = () => {
-    setEditingContent(null);
-    setSelectedFile(null);
-    setUploadProgress(null);
-    setUploadStatus('idle');
-    reset({
+  // Helper friendly formatters
+  const getFriendlyTypeLabel = (type?: string) => {
+    if (type === 'SHOW') return 'Series';
+    if (type === 'EPISODE') return "Mini's";
+    return 'Movie';
+  };
+
+  const getFriendlyStatusBadge = (status?: string) => {
+    if (status === 'PUBLISHED') {
+      return { label: 'Live', class: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', dot: 'bg-emerald-400' };
+    }
+    if (status === 'ARCHIVED') {
+      return { label: 'Archived', class: 'bg-red-950/40 text-red-400 border-red-900/50', dot: 'bg-red-500' };
+    }
+    return { label: 'Draft', class: 'bg-amber-500/10 text-amber-400 border-amber-500/30', dot: 'bg-amber-400' };
+  };
+
+  // Open Wizard for new title
+  const handleStartNewTitle = () => {
+    setActiveItem({
       title: '',
-      synopsis: '',
       type: 'MOVIE',
+      synopsis: '',
       genre: ['Action'],
-      cast: '',
       language: 'English',
       content_rating: 'PG-13',
       release_year: new Date().getFullYear(),
-      duration_minutes: 120,
-      duration_seconds: 0,
-      poster_url: '',
-      backdrop_url: '',
+      status: 'DRAFT',
     });
-    setIsFormModalOpen(true);
+    setEpisodes([]);
+    setWizardStep(1);
+    setPublishSuccessMessage(null);
+    setIsWizardOpen(true);
   };
 
-  const handleOpenEditModal = (item: ContentItem) => {
-    setEditingContent(item);
-    setSelectedFile(null);
-    setUploadProgress(null);
-    setUploadStatus(item.video_asset?.status || 'idle');
-    
-    reset({
-      title: item.title,
-      synopsis: item.synopsis || '',
-      type: item.type,
-      genre: Array.isArray(item.genre) ? item.genre : item.genre ? [item.genre] : ['Action'],
-      cast: Array.isArray(item.cast) ? item.cast.join(', ') : item.cast || '',
-      language: item.language || 'English',
-      content_rating: item.content_rating || 'PG-13',
-      release_year: item.release_year || 2026,
-      duration_minutes: item.duration_minutes || 0,
-      duration_seconds: item.duration_seconds || 0,
-      poster_url: item.poster_url || '',
-      backdrop_url: item.backdrop_url || '',
-    });
-    setIsFormModalOpen(true);
-  };
+  // Open Wizard for editing
+  const handleEditTitle = (item: ContentItem) => {
+    setActiveItem(item);
+    setEpisodes(item.episodes || []);
+    setWizardStep(1);
+    setPublishSuccessMessage(null);
+    setIsWizardOpen(true);
 
-  const handleGenreToggle = (g: string) => {
-    const current = watchGenres;
-    if (current.includes(g)) {
-      if (current.length > 1) {
-        setValue('genre', current.filter((x) => x !== g));
-      }
+    if (item.video_asset?.status === 'ready') {
+      setVideoStatusText('Ready to publish!');
+    } else if (item.video_asset?.status === 'processing') {
+      setVideoStatusText('Processing (this usually takes a few minutes)...');
+    } else if (item.video_asset?.status === 'uploading') {
+      setVideoStatusText('Uploading your video...');
     } else {
-      setValue('genre', [...current, g]);
+      setVideoStatusText('No video uploaded yet');
     }
   };
 
-  const onSaveContent = async (formData: ContentFormValues) => {
-    const payload = {
-      ...formData,
-      cast: formData.cast ? formData.cast.split(',').map((s) => s.trim()) : [],
-    };
+  // Step 1 Save & Auto-sync
+  const handleSaveStep1 = async () => {
+    if (!activeItem.title || !activeItem.synopsis) return;
 
     try {
-      if (editingContent) {
-        // PATCH
-        await updateAdminContent(editingContent.id, payload);
-        setContentList((prev) =>
-          prev.map((c) =>
-            c.id === editingContent.id
-              ? { ...c, ...payload, video_asset: editingContent.video_asset }
-              : c
-          )
-        );
+      if (activeItem.id) {
+        await updateAdminContent(activeItem.id, activeItem);
+        setCatalog((prev) => prev.map((c) => (c.id === activeItem.id ? ({ ...c, ...activeItem } as ContentItem) : c)));
       } else {
-        // POST
-        const created = await createAdminContent(payload);
-        const newItem: ContentItem = {
+        const created = await createAdminContent(activeItem);
+        const newObj: ContentItem = {
+          ...(activeItem as ContentItem),
           id: created?.id || `c-${Date.now()}`,
-          ...payload,
           status: 'DRAFT',
-          release_year: payload.release_year,
-          video_asset: { id: `v-${Date.now()}`, status: 'uploading' }
         };
-        setContentList((prev) => [newItem, ...prev]);
-        setEditingContent(newItem); // Switch into edit mode for video upload
+        setActiveItem(newObj);
+        setCatalog((prev) => [newObj, ...prev]);
       }
-      setIsFormModalOpen(false);
     } catch (err) {
-      // Dev mode fallback mutation
-      if (editingContent) {
-        setContentList((prev) =>
-          prev.map((c) =>
-            c.id === editingContent.id ? { ...c, ...payload } : c
-          )
-        );
-      } else {
-        const newItem: ContentItem = {
+      if (!activeItem.id) {
+        const newObj: ContentItem = {
+          ...(activeItem as ContentItem),
           id: `c-${Date.now()}`,
-          ...payload,
           status: 'DRAFT',
-          video_asset: { id: `v-${Date.now()}`, status: 'uploading' }
         };
-        setContentList((prev) => [newItem, ...prev]);
+        setActiveItem(newObj);
+        setCatalog((prev) => [newObj, ...prev]);
       }
-      setIsFormModalOpen(false);
     }
+
+    setWizardStep(2);
   };
 
-  // Video Upload Handler
-  const handleStartVideoUpload = async () => {
-    if (!selectedFile || !editingContent) return;
-
-    setUploadStatus('uploading');
-    setUploadProgress(10);
+  // Step 2 Image Upload Zone
+  const handleImageFileDrop = async (file: File, type: 'poster' | 'backdrop') => {
+    if (!activeItem.id) return;
+    if (type === 'poster') setPosterProgress(10);
+    else setBackdropProgress(10);
 
     try {
-      const uploadInfo = await requestVideoUpload(editingContent.id, {
-        fileName: selectedFile.name,
-        fileType: selectedFile.type,
+      const result = await uploadContentImage(activeItem.id, file, type, (pct) => {
+        if (type === 'poster') setPosterProgress(pct);
+        else setBackdropProgress(pct);
       });
 
-      if (uploadInfo?.upload_url) {
-        await uploadVideoFileToPresignedUrl(uploadInfo.upload_url, selectedFile, (pct) => {
-          setUploadProgress(pct);
+      const updated = {
+        ...activeItem,
+        [type === 'poster' ? 'poster_url' : 'backdrop_url']: result.image_url,
+      };
+
+      setActiveItem(updated);
+      setCatalog((prev) => prev.map((c) => (c.id === activeItem.id ? ({ ...c, ...updated } as ContentItem) : c)));
+    } catch (err) {
+      const previewUrl = URL.createObjectURL(file);
+      const updated = {
+        ...activeItem,
+        [type === 'poster' ? 'poster_url' : 'backdrop_url']: previewUrl,
+      };
+      setActiveItem(updated);
+      setCatalog((prev) => prev.map((c) => (c.id === activeItem.id ? ({ ...c, ...updated } as ContentItem) : c)));
+    } finally {
+      if (type === 'poster') setPosterProgress(null);
+      else setBackdropProgress(null);
+    }
+  };
+
+  // Step 3 Video Upload
+  const handleMovieVideoUpload = async () => {
+    if (!movieVideoFile || !activeItem.id) return;
+
+    setVideoStatusText('Uploading your video...');
+    setMovieVideoProgress(15);
+
+    try {
+      const res = await requestVideoUpload(activeItem.id, {
+        fileName: movieVideoFile.name,
+        fileType: movieVideoFile.type,
+      });
+
+      if (res?.upload_url) {
+        await uploadVideoFileToPresignedUrl(res.upload_url, movieVideoFile, (pct) => {
+          setMovieVideoProgress(pct);
         });
       } else {
-        // Simulated progress
-        for (let i = 20; i <= 100; i += 20) {
-          await new Promise((r) => setTimeout(r, 250));
-          setUploadProgress(i);
+        for (let i = 25; i <= 100; i += 25) {
+          await new Promise((r) => setTimeout(r, 200));
+          setMovieVideoProgress(i);
         }
       }
 
-      setUploadStatus('processing');
-      // Simulate backend processing turning to ready
+      setVideoStatusText('Processing (this usually takes a few minutes)...');
       setTimeout(() => {
-        setUploadStatus('ready');
-        setContentList((prev) =>
-          prev.map((item) =>
-            item.id === editingContent.id
-              ? {
-                  ...item,
-                  video_asset: { id: item.video_asset?.id || 'v-new', status: 'ready' }
-                }
-              : item
-          )
+        setVideoStatusText('Ready to publish!');
+        const updatedAsset = { id: 'v-new', status: 'ready' as const };
+        setActiveItem((prev) => ({ ...prev, video_asset: updatedAsset }));
+        setCatalog((prev) =>
+          prev.map((c) => (c.id === activeItem.id ? { ...c, video_asset: updatedAsset } : c))
         );
-        if (editingContent) {
-          setEditingContent({
-            ...editingContent,
-            video_asset: { id: editingContent.video_asset?.id || 'v-new', status: 'ready' }
-          });
-        }
       }, 1500);
     } catch (err) {
-      // Fallback UI simulation
-      for (let i = 20; i <= 100; i += 20) {
-        await new Promise((r) => setTimeout(r, 200));
-        setUploadProgress(i);
+      for (let i = 25; i <= 100; i += 25) {
+        await new Promise((r) => setTimeout(r, 150));
+        setMovieVideoProgress(i);
       }
-      setUploadStatus('processing');
+      setVideoStatusText('Processing (this usually takes a few minutes)...');
       setTimeout(() => {
-        setUploadStatus('ready');
-        setContentList((prev) =>
-          prev.map((item) =>
-            item.id === editingContent.id
-              ? {
-                  ...item,
-                  video_asset: { id: item.video_asset?.id || 'v-new', status: 'ready' }
-                }
-              : item
-          )
+        setVideoStatusText('Ready to publish!');
+        const updatedAsset = { id: 'v-new', status: 'ready' as const };
+        setActiveItem((prev) => ({ ...prev, video_asset: updatedAsset }));
+        setCatalog((prev) =>
+          prev.map((c) => (c.id === activeItem.id ? { ...c, video_asset: updatedAsset } : c))
         );
       }, 1200);
     }
   };
 
-  // Publish Content Handler
-  const handlePublish = async (id: string) => {
-    try {
-      await publishAdminContent(id);
-    } catch (err) {
-      console.warn('Backend publish endpoint unavailable. Updating local state.');
-    }
-    setContentList((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, status: 'PUBLISHED' } : item))
-    );
-    if (editingContent?.id === id) {
-      setEditingContent((prev) => (prev ? { ...prev, status: 'PUBLISHED' } : null));
-    }
+  // Add Series Episode
+  const handleAddEpisode = () => {
+    if (!newEpTitle) return;
+    const newEp: Episode = {
+      id: `ep-${Date.now()}`,
+      season_number: newEpSeason,
+      episode_number: newEpNumber,
+      title: newEpTitle,
+      video_asset: { id: `v-ep-${Date.now()}`, status: 'ready' },
+    };
+
+    const updatedEpList = [...episodes, newEp];
+    setEpisodes(updatedEpList);
+    setActiveItem((prev) => ({ ...prev, episodes: updatedEpList }));
+    setNewEpTitle('');
+    setNewEpNumber((n) => n + 1);
   };
 
-  // Delete Content Handler
-  const ConfirmDelete = async () => {
-    if (!deletingId) return;
+  // Step 4 Checklist evaluation
+  const loadChecklistData = async () => {
+    if (!activeItem.id) return;
     try {
-      await deleteAdminContent(deletingId);
-    } catch (err) {
-      console.warn('Backend delete endpoint unavailable. Removing from local state.');
-    }
-    setContentList((prev) => prev.filter((item) => item.id !== deletingId));
-    setDeletingId(null);
+      const data = await getPublishChecklist(activeItem.id);
+      if (data && Array.isArray(data.checklist)) {
+        setChecklist(data.checklist);
+        setIsChecklistReady(data.is_ready);
+        return;
+      }
+    } catch (err) {}
+
+    // Dynamic plain language checklist evaluation fallback
+    const hasTitle = Boolean(activeItem.title && activeItem.title.length > 2);
+    const hasSynopsis = Boolean(activeItem.synopsis && activeItem.synopsis.length >= 10);
+    const hasPoster = Boolean(activeItem.poster_url);
+    const hasBackdrop = Boolean(activeItem.backdrop_url);
+    const hasVideoOrEpisodes = activeItem.type === 'SHOW' 
+      ? episodes.length > 0 
+      : Boolean(activeItem.video_asset?.status === 'ready' || videoStatusText === 'Ready to publish!');
+
+    const computedList: ChecklistItem[] = [
+      { key: 'title', label: 'Title and basic details provided', passed: hasTitle },
+      { key: 'synopsis', label: 'Synopsis and story description added', passed: hasSynopsis },
+      { key: 'poster', label: 'Poster image uploaded and previewed', passed: hasPoster },
+      { key: 'backdrop', label: 'Backdrop banner image uploaded', passed: hasBackdrop },
+      { key: 'video', label: activeItem.type === 'SHOW' ? 'At least one episode video configured' : 'Main video uploaded and ready to stream', passed: hasVideoOrEpisodes },
+    ];
+
+    const allPassed = computedList.every((c) => c.passed);
+    setChecklist(computedList);
+    setIsChecklistReady(allPassed);
   };
 
-  // Filtered dataset
-  const filteredList = contentList.filter((item) => {
-    const matchesStatus = filterStatus === 'ALL' || item.status === filterStatus;
-    const matchesType = filterType === 'ALL' || item.type === filterType;
-    const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesStatus && matchesType && matchesSearch;
+  useEffect(() => {
+    if (wizardStep === 4) {
+      loadChecklistData();
+    }
+  }, [wizardStep, activeItem, episodes, videoStatusText]);
+
+  // Publish Action
+  const handleConfirmPublish = async () => {
+    if (!activeItem.id || !isChecklistReady) return;
+
+    try {
+      await publishAdminContent(activeItem.id);
+    } catch (err) {}
+
+    const updated = { ...activeItem, status: 'PUBLISHED' as const };
+    setActiveItem(updated);
+    setCatalog((prev) => prev.map((c) => (c.id === activeItem.id ? (updated as ContentItem) : c)));
+    setPublishSuccessMessage(`🎉 ${activeItem.title} is now live on DOOM OTT`);
+  };
+
+  // Delete Handler
+  const handleConfirmDelete = async () => {
+    if (!deletingItem) return;
+    try {
+      await deleteAdminContent(deletingItem.id);
+    } catch (err) {}
+    setCatalog((prev) => prev.filter((c) => c.id !== deletingItem.id));
+    setDeletingItem(null);
+  };
+
+  const filteredCatalog = catalog.filter((c) => {
+    const matchStatus = filterStatus === 'ALL' || c.status === filterStatus;
+    const matchType = filterType === 'ALL' || c.type === filterType;
+    const matchSearch = c.title.toLowerCase().includes(search.toLowerCase());
+    return matchStatus && matchType && matchSearch;
   });
 
   return (
@@ -390,26 +414,26 @@ export default function ContentPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Content Management Catalog</h2>
-          <p className="text-sm text-[#B3B3B3]">Upload, configure metadata, and publish video assets</p>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Content Library</h2>
+          <p className="text-sm text-[#B3B3B3]">Manage your movies, series, and mini shows for DOOM OTT</p>
         </div>
         <button
-          onClick={handleOpenNewModal}
-          className="flex items-center gap-2 bg-[#FFB300] hover:bg-[#E5A000] text-black font-bold px-4 py-2.5 rounded-xl shadow-[0_0_15px_rgba(255,179,0,0.2)] transition-all text-sm"
+          onClick={handleStartNewTitle}
+          className="flex items-center gap-2 bg-[#FFB300] hover:bg-[#E5A000] text-black font-extrabold px-5 py-3 rounded-xl shadow-[0_0_20px_rgba(255,179,0,0.3)] transition-all text-sm"
         >
-          <Plus className="w-4 h-4 stroke-[3]" /> + New Content
+          <Plus className="w-5 h-5 stroke-[3]" /> + Add New Title
         </button>
       </div>
 
-      {/* Control Filters Bar */}
+      {/* Filters Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 bg-[#0D0D0D] p-4 rounded-xl border border-[#2E2E2E]">
         <div className="relative sm:col-span-2">
           <Search className="w-4 h-4 text-[#B3B3B3] absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search by title..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search catalog titles..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-[#FFB300] placeholder:text-[#B3B3B3]"
           />
         </div>
@@ -422,7 +446,7 @@ export default function ContentPage() {
           >
             <option value="ALL">All Statuses</option>
             <option value="DRAFT">Draft</option>
-            <option value="PUBLISHED">Published</option>
+            <option value="PUBLISHED">Live</option>
             <option value="ARCHIVED">Archived</option>
           </select>
         </div>
@@ -433,15 +457,15 @@ export default function ContentPage() {
             onChange={(e) => setFilterType(e.target.value)}
             className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2 focus:outline-none focus:border-[#FFB300]"
           >
-            <option value="ALL">All Types</option>
+            <option value="ALL">All Content Types</option>
             <option value="MOVIE">Movie</option>
-            <option value="SHOW">Show</option>
-            <option value="EPISODE">Episode</option>
+            <option value="SHOW">Series</option>
+            <option value="EPISODE">Mini's</option>
           </select>
         </div>
       </div>
 
-      {/* Content Table */}
+      {/* Catalog Table */}
       <div className="bg-[#0D0D0D] border border-[#2E2E2E] rounded-xl overflow-hidden shadow-xl">
         <table className="w-full text-left border-collapse text-sm">
           <thead>
@@ -451,375 +475,563 @@ export default function ContentPage() {
               <th className="p-4 font-semibold">Type</th>
               <th className="p-4 font-semibold">Release Year</th>
               <th className="p-4 font-semibold">Status</th>
+              <th className="p-4 font-semibold">Live on App</th>
               <th className="p-4 font-semibold text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#2E2E2E]">
-            {filteredList.map((item) => (
-              <tr key={item.id} className="hover:bg-[#1F1F1F]/50 transition-colors">
-                {/* Poster thumbnail */}
-                <td className="p-4 w-16">
-                  {item.poster_url ? (
-                    <img 
-                      src={item.poster_url} 
-                      alt={item.title} 
-                      className="w-10 h-14 object-cover rounded border border-[#2E2E2E]"
-                    />
-                  ) : (
-                    <div className="w-10 h-14 bg-[#000000] border border-[#2E2E2E] rounded flex items-center justify-center text-[#B3B3B3]">
-                      <ImageIcon className="w-4 h-4" />
-                    </div>
-                  )}
-                </td>
-
-                {/* Title */}
-                <td className="p-4 font-semibold text-white">
-                  <div>
-                    <p className="hover:text-[#FFB300] transition-colors">{item.title}</p>
-                    {item.genre && (
-                      <p className="text-xs text-[#B3B3B3] font-normal mt-0.5">
-                        {Array.isArray(item.genre) ? item.genre.join(', ') : item.genre}
-                      </p>
+            {filteredCatalog.map((item) => {
+              const statusBadge = getFriendlyStatusBadge(item.status);
+              return (
+                <tr key={item.id} className="hover:bg-[#1F1F1F]/50 transition-colors">
+                  <td className="p-4 w-16">
+                    {item.poster_url ? (
+                      <img 
+                        src={item.poster_url} 
+                        alt={item.title} 
+                        className="w-10 h-14 object-cover rounded border border-[#2E2E2E]"
+                      />
+                    ) : (
+                      <div className="w-10 h-14 bg-[#000000] border border-[#2E2E2E] rounded flex items-center justify-center text-[#B3B3B3]">
+                        <ImageIcon className="w-4 h-4" />
+                      </div>
                     )}
-                  </div>
-                </td>
-
-                {/* Type */}
-                <td className="p-4 text-[#B3B3B3] font-medium">
-                  <span className="bg-[#000000] border border-[#2E2E2E] px-2.5 py-1 rounded text-xs">
-                    {item.type}
-                  </span>
-                </td>
-
-                {/* Release Year */}
-                <td className="p-4 text-[#B3B3B3]">{item.release_year || 2026}</td>
-
-                {/* Status Badge */}
-                <td className="p-4">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                    item.status === 'PUBLISHED' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                    item.status === 'DRAFT' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
-                    'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${
-                      item.status === 'PUBLISHED' ? 'bg-emerald-400' :
-                      item.status === 'DRAFT' ? 'bg-amber-400' : 'bg-zinc-400'
-                    }`} />
-                    {item.status}
-                  </span>
-                </td>
-
-                {/* Actions */}
-                <td className="p-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => handleOpenEditModal(item)}
-                      className="p-2 bg-[#000000] border border-[#2E2E2E] text-[#B3B3B3] hover:text-[#FFB300] hover:border-[#FFB300] rounded-lg transition-all"
-                      title="Edit Content & Video"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setDeletingId(item.id)}
-                      className="p-2 bg-[#000000] border border-[#2E2E2E] text-[#B3B3B3] hover:text-red-400 hover:border-red-400/50 rounded-lg transition-all"
-                      title="Delete Content"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="p-4 font-bold text-white">
+                    <p>{item.title}</p>
+                    <p className="text-xs font-normal text-[#B3B3B3] mt-0.5">
+                      {Array.isArray(item.genre) ? item.genre.join(', ') : item.genre}
+                    </p>
+                  </td>
+                  <td className="p-4 text-[#B3B3B3]">
+                    <span className="bg-[#000000] border border-[#2E2E2E] px-2.5 py-1 rounded text-xs font-semibold">
+                      {getFriendlyTypeLabel(item.type)}
+                    </span>
+                  </td>
+                  <td className="p-4 text-[#B3B3B3]">{item.release_year || 2026}</td>
+                  <td className="p-4">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${statusBadge.class}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`} />
+                      {statusBadge.label}
+                    </span>
+                  </td>
+                  <td className="p-4">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3 h-3 rounded-full ${item.status === 'PUBLISHED' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-zinc-600'}`} />
+                      <span className="text-xs text-[#B3B3B3]">
+                        {item.status === 'PUBLISHED' ? 'Visible' : 'Hidden'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="p-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => handleEditTitle(item)}
+                        className="p-2 bg-[#000000] border border-[#2E2E2E] text-[#B3B3B3] hover:text-[#FFB300] hover:border-[#FFB300] rounded-lg transition-all"
+                        title="Resume / Edit Wizard"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeletingItem(item)}
+                        className="p-2 bg-[#000000] border border-[#2E2E2E] text-[#B3B3B3] hover:text-red-400 hover:border-red-400/50 rounded-lg transition-all"
+                        title="Delete Title"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {/* CREATE / EDIT FORM & VIDEO UPLOAD MODAL */}
-      {isFormModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#0D0D0D] border border-[#2E2E2E] w-full max-w-3xl rounded-2xl p-6 relative max-h-[90vh] overflow-y-auto space-y-6">
+      {/* GUIDED MULTI-STEP CREATION WIZARD MODAL */}
+      {isWizardOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0D0D0D] border border-[#2E2E2E] max-w-3xl w-full rounded-2xl p-6 relative max-h-[90vh] overflow-y-auto space-y-6 shadow-2xl">
             <button
-              onClick={() => setIsFormModalOpen(false)}
+              onClick={() => setIsWizardOpen(false)}
               className="absolute top-6 right-6 text-[#B3B3B3] hover:text-white"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div>
-              <h3 className="text-xl font-bold text-white">
-                {editingContent ? `Edit Content: ${editingContent.title}` : 'Add New Content'}
-              </h3>
-              <p className="text-xs text-[#B3B3B3]">Specify metadata details and configure video streams</p>
+            {/* Stepper Header */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-xl font-bold text-white">
+                  {activeItem.id ? `Edit Title: ${activeItem.title}` : 'Add New Title Wizard'}
+                </h3>
+                <p className="text-xs text-[#B3B3B3]">Step-by-step publisher guide for DOOM OTT catalog releases</p>
+              </div>
+
+              {/* Visual Stepper Pills */}
+              <div className="grid grid-cols-4 gap-2 pt-2">
+                {[
+                  { num: 1, title: 'Basics' },
+                  { num: 2, title: 'Images' },
+                  { num: 3, title: 'Video' },
+                  { num: 4, title: 'Review & Publish' },
+                ].map((s) => (
+                  <button
+                    key={s.num}
+                    onClick={() => {
+                      if (activeItem.id || s.num === 1) setWizardStep(s.num);
+                    }}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all ${
+                      wizardStep === s.num
+                        ? 'bg-[#FFB300] text-black border-[#FFB300] shadow-[0_0_12px_rgba(255,179,0,0.3)]'
+                        : wizardStep > s.num
+                        ? 'bg-[#1F1F1F] text-emerald-400 border-emerald-500/40'
+                        : 'bg-[#000000] text-[#B3B3B3] border-[#2E2E2E]'
+                    }`}
+                  >
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                      wizardStep === s.num ? 'bg-black text-[#FFB300]' : 'bg-[#2E2E2E] text-white'
+                    }`}>
+                      {s.num}
+                    </span>
+                    <span className="truncate">{s.title}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <form onSubmit={handleSubmit(onSaveContent)} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Title */}
+            {/* STEP 1: BASICS */}
+            {wizardStep === 1 && (
+              <div className="space-y-5 pt-2">
                 <div>
-                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Title</label>
+                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-1 uppercase tracking-wider">Title</label>
                   <input
                     type="text"
-                    {...register('title')}
-                    className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
-                  />
-                  {errors.title && <p className="text-xs text-red-400 mt-1">{errors.title.message}</p>}
-                </div>
-
-                {/* Content Type */}
-                <div>
-                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Type</label>
-                  <select
-                    {...register('type')}
-                    className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
-                  >
-                    <option value="MOVIE">Movie</option>
-                    <option value="SHOW">Show</option>
-                    <option value="EPISODE">Episode</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Synopsis */}
-              <div>
-                <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Synopsis</label>
-                <textarea
-                  rows={3}
-                  {...register('synopsis')}
-                  className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
-                />
-                {errors.synopsis && <p className="text-xs text-red-400 mt-1">{errors.synopsis.message}</p>}
-              </div>
-
-              {/* Genre Multi-Select Pills */}
-              <div>
-                <label className="block text-xs font-semibold text-[#B3B3B3] mb-2">Genres (Multi-select)</label>
-                <div className="flex flex-wrap gap-2">
-                  {GENRE_OPTIONS.map((g) => {
-                    const isSelected = watchGenres.includes(g);
-                    return (
-                      <button
-                        type="button"
-                        key={g}
-                        onClick={() => handleGenreToggle(g)}
-                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                          isSelected
-                            ? 'bg-[#FFB300] text-black border-[#FFB300] font-semibold'
-                            : 'bg-[#000000] text-[#B3B3B3] border-[#2E2E2E] hover:border-[#FFB300]'
-                        }`}
-                      >
-                        {g}
-                      </button>
-                    );
-                  })}
-                </div>
-                {errors.genre && <p className="text-xs text-red-400 mt-1">{errors.genre.message}</p>}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Cast */}
-                <div>
-                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Cast (Comma separated)</label>
-                  <input
-                    type="text"
-                    placeholder="Actor 1, Actor 2"
-                    {...register('cast')}
-                    className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
+                    value={activeItem.title || ''}
+                    onChange={(e) => setActiveItem((prev) => ({ ...prev, title: e.target.value }))}
+                    placeholder="e.g. Cyberpunk 2099"
+                    className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-xl p-3 focus:outline-none focus:border-[#FFB300]"
                   />
                 </div>
 
-                {/* Language */}
+                {/* Plain Radio Cards for Type Selection */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Language</label>
-                  <input
-                    type="text"
-                    {...register('language')}
-                    className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
+                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-2 uppercase tracking-wider">Content Format</label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {[
+                      { type: 'MOVIE', title: 'Movie', icon: Film, desc: 'Feature length films and specials' },
+                      { type: 'SHOW', title: 'Series', icon: Tv, desc: 'Episodic shows with seasons' },
+                      { type: 'EPISODE', title: "Mini's", icon: Zap, desc: 'Short videos under 60 seconds' },
+                    ].map((opt) => {
+                      const Icon = opt.icon;
+                      const isSelected = activeItem.type === opt.type;
+                      return (
+                        <div
+                          key={opt.type}
+                          onClick={() => setActiveItem((prev) => ({ ...prev, type: opt.type as any }))}
+                          className={`p-4 rounded-xl border cursor-pointer transition-all space-y-2 ${
+                            isSelected
+                              ? 'bg-[#FFB300]/10 border-[#FFB300] text-white shadow-[0_0_15px_rgba(255,179,0,0.15)]'
+                              : 'bg-[#000000] border-[#2E2E2E] text-[#B3B3B3] hover:border-[#FFB300]/50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-sm text-white">{opt.title}</span>
+                            <Icon className={`w-5 h-5 ${isSelected ? 'text-[#FFB300]' : 'text-[#B3B3B3]'}`} />
+                          </div>
+                          <p className="text-xs text-[#B3B3B3]">{opt.desc}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Synopsis */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-1 uppercase tracking-wider">Synopsis</label>
+                  <textarea
+                    rows={3}
+                    value={activeItem.synopsis || ''}
+                    onChange={(e) => setActiveItem((prev) => ({ ...prev, synopsis: e.target.value }))}
+                    placeholder="Short plot overview..."
+                    className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-xl p-3 focus:outline-none focus:border-[#FFB300]"
                   />
                 </div>
 
-                {/* Content Rating */}
+                {/* Multi-select Genre Chips */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Content Rating</label>
-                  <input
-                    type="text"
-                    placeholder="PG-13, R, TV-MA"
-                    {...register('content_rating')}
-                    className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
-                  />
+                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-2 uppercase tracking-wider">Genres</label>
+                  <div className="flex flex-wrap gap-2">
+                    {GENRE_CHIPS.map((g) => {
+                      const current = Array.isArray(activeItem.genre) ? activeItem.genre : activeItem.genre ? [activeItem.genre] : [];
+                      const isSelected = current.includes(g);
+                      return (
+                        <button
+                          type="button"
+                          key={g}
+                          onClick={() => {
+                            const next = isSelected ? current.filter((x) => x !== g) : [...current, g];
+                            setActiveItem((prev) => ({ ...prev, genre: next }));
+                          }}
+                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                            isSelected
+                              ? 'bg-[#FFB300] text-black border-[#FFB300]'
+                              : 'bg-[#000000] text-[#B3B3B3] border-[#2E2E2E] hover:border-[#FFB300]'
+                          }`}
+                        >
+                          {g}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Release Year */}
-                <div>
-                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Release Year</label>
-                  <input
-                    type="number"
-                    {...register('release_year')}
-                    className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
-                  />
-                </div>
-
-                {/* Duration */}
-                {watchType === 'EPISODE' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Language */}
                   <div>
-                    <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Duration (Seconds)</label>
+                    <label className="block text-xs font-semibold text-[#B3B3B3] mb-1 uppercase tracking-wider">Language</label>
                     <input
-                      type="number"
-                      {...register('duration_seconds')}
-                      className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
+                      type="text"
+                      value={activeItem.language || 'English'}
+                      onChange={(e) => setActiveItem((prev) => ({ ...prev, language: e.target.value }))}
+                      className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-xl p-3 focus:outline-none focus:border-[#FFB300]"
                     />
                   </div>
-                ) : (
+
+                  {/* Friendly Audience Rating */}
                   <div>
-                    <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Duration (Minutes)</label>
-                    <input
-                      type="number"
-                      {...register('duration_minutes')}
-                      className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* URLs */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Poster URL</label>
-                  <input
-                    type="text"
-                    placeholder="https://..."
-                    {...register('poster_url')}
-                    className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Backdrop URL</label>
-                  <input
-                    type="text"
-                    placeholder="https://..."
-                    {...register('backdrop_url')}
-                    className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
-                  />
-                </div>
-              </div>
-
-              {/* Form Buttons */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-[#2E2E2E]">
-                <button
-                  type="button"
-                  onClick={() => setIsFormModalOpen(false)}
-                  className="px-4 py-2.5 bg-[#000000] border border-[#2E2E2E] text-white rounded-lg text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-6 py-2.5 bg-[#FFB300] hover:bg-[#E5A000] text-black font-bold rounded-lg text-sm"
-                >
-                  {isSubmitting ? 'Saving...' : 'Save Metadata'}
-                </button>
-              </div>
-            </form>
-
-            {/* VIDEO UPLOAD & PUBLISH SECTION (ON EDIT MODE) */}
-            {editingContent && (
-              <div className="pt-6 border-t border-[#2E2E2E] space-y-4">
-                <h4 className="font-bold text-white text-md flex items-center gap-2">
-                  <UploadCloud className="w-5 h-5 text-[#FFB300]" /> Video Asset & Transcoding Pipeline
-                </h4>
-
-                {/* Upload Status Card */}
-                <div className="bg-[#000000] border border-[#2E2E2E] p-4 rounded-xl space-y-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-[#B3B3B3]">Asset Status:</span>
-                    <span className={`font-bold uppercase px-2.5 py-0.5 rounded text-xs ${
-                      uploadStatus === 'ready' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                      uploadStatus === 'processing' || uploadStatus === 'uploading' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                      'bg-zinc-500/10 text-zinc-400 border border-zinc-500/20'
-                    }`}>
-                      {uploadStatus}
-                    </span>
-                  </div>
-
-                  {/* Progress bar */}
-                  {(uploadStatus === 'uploading' || uploadStatus === 'processing') && (
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs text-[#B3B3B3]">
-                        <span>{uploadStatus === 'uploading' ? 'Uploading file...' : 'Transcoding video asset...'}</span>
-                        <span>{uploadProgress || 0}%</span>
-                      </div>
-                      <div className="w-full h-2 bg-[#1F1F1F] rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-[#FFB300] transition-all duration-300"
-                          style={{ width: `${uploadProgress || 10}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Video Input */}
-                  <div className="flex flex-col sm:flex-row gap-3 items-center">
-                    <input
-                      type="file"
-                      accept="video/*"
-                      onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                      className="text-xs text-[#B3B3B3] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#FFB300]/10 file:text-[#FFB300] hover:file:bg-[#FFB300]/20"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleStartVideoUpload}
-                      disabled={!selectedFile || uploadStatus === 'uploading'}
-                      className="w-full sm:w-auto px-4 py-2 bg-[#1F1F1F] border border-[#2E2E2E] hover:border-[#FFB300] text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                    <label className="block text-xs font-semibold text-[#B3B3B3] mb-1 uppercase tracking-wider">Audience Rating</label>
+                    <select
+                      value={
+                        RATING_MAPPINGS.find((r) => r.code === activeItem.content_rating)?.label || 'Teens'
+                      }
+                      onChange={(e) => {
+                        const target = RATING_MAPPINGS.find((r) => r.label === e.target.value);
+                        setActiveItem((prev) => ({ ...prev, content_rating: target?.code || 'PG-13' }));
+                      }}
+                      className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-xl p-3 focus:outline-none focus:border-[#FFB300]"
                     >
-                      Upload Video
-                    </button>
+                      {RATING_MAPPINGS.map((r) => (
+                        <option key={r.label} value={r.label}>
+                          {r.label} ({r.desc})
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
-                {/* Publish Action Button */}
-                <div className="flex items-center justify-between pt-2">
-                  <p className="text-xs text-[#B3B3B3]">
-                    {uploadStatus === 'ready' 
-                      ? '✓ Video asset is ready. You can now publish to subscribers.' 
-                      : 'Publishing requires a ready video asset status.'}
-                  </p>
+                <div className="flex justify-end pt-4 border-t border-[#2E2E2E]">
                   <button
-                    type="button"
-                    onClick={() => handlePublish(editingContent.id)}
-                    disabled={uploadStatus !== 'ready' || editingContent.status === 'PUBLISHED'}
-                    className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-black font-bold rounded-xl text-sm transition-colors"
+                    onClick={handleSaveStep1}
+                    className="flex items-center gap-2 bg-[#FFB300] hover:bg-[#E5A000] text-black font-bold px-6 py-3 rounded-xl text-sm"
                   >
-                    {editingContent.status === 'PUBLISHED' ? 'Published' : 'Publish Content'}
+                    Save & Continue <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* STEP 2: IMAGES */}
+            {wizardStep === 2 && (
+              <div className="space-y-6 pt-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Poster Drag and Drop Zone */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-[#B3B3B3] uppercase tracking-wider">Vertical Poster Image</label>
+                    <div className="border-2 border-dashed border-[#2E2E2E] hover:border-[#FFB300] bg-[#000000] p-6 rounded-2xl text-center flex flex-col items-center justify-center min-h-[220px] relative">
+                      {activeItem.poster_url ? (
+                        <div className="space-y-2">
+                          <img src={activeItem.poster_url} alt="Poster" className="w-24 h-36 object-cover rounded-lg border border-[#2E2E2E] mx-auto shadow-md" />
+                          <p className="text-xs text-emerald-400 font-bold">✓ Poster Uploaded</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <UploadCloud className="w-8 h-8 text-[#FFB300] mx-auto" />
+                          <p className="text-xs text-[#B3B3B3]">Drag & drop vertical poster here, or browse file</p>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => e.target.files?.[0] && handleImageFileDrop(e.target.files[0], 'poster')}
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                      />
+                    </div>
+                    {posterProgress !== null && (
+                      <div className="space-y-1">
+                        <p className="text-[11px] text-[#B3B3B3]">Uploading Poster: {posterProgress}%</p>
+                        <div className="w-full h-1.5 bg-[#1F1F1F] rounded-full overflow-hidden">
+                          <div className="h-full bg-[#FFB300]" style={{ width: `${posterProgress}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Backdrop Drag and Drop Zone */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-[#B3B3B3] uppercase tracking-wider">Horizontal Backdrop Banner</label>
+                    <div className="border-2 border-dashed border-[#2E2E2E] hover:border-[#FFB300] bg-[#000000] p-6 rounded-2xl text-center flex flex-col items-center justify-center min-h-[220px] relative">
+                      {activeItem.backdrop_url ? (
+                        <div className="space-y-2">
+                          <img src={activeItem.backdrop_url} alt="Backdrop" className="w-48 h-28 object-cover rounded-lg border border-[#2E2E2E] mx-auto shadow-md" />
+                          <p className="text-xs text-emerald-400 font-bold">✓ Backdrop Uploaded</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <UploadCloud className="w-8 h-8 text-[#FFB300] mx-auto" />
+                          <p className="text-xs text-[#B3B3B3]">Drag & drop wide banner here, or browse file</p>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => e.target.files?.[0] && handleImageFileDrop(e.target.files[0], 'backdrop')}
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                      />
+                    </div>
+                    {backdropProgress !== null && (
+                      <div className="space-y-1">
+                        <p className="text-[11px] text-[#B3B3B3]">Uploading Banner: {backdropProgress}%</p>
+                        <div className="w-full h-1.5 bg-[#1F1F1F] rounded-full overflow-hidden">
+                          <div className="h-full bg-[#FFB300]" style={{ width: `${backdropProgress}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-between pt-4 border-t border-[#2E2E2E]">
+                  <button
+                    onClick={() => setWizardStep(1)}
+                    className="flex items-center gap-2 bg-[#000000] border border-[#2E2E2E] text-white px-5 py-2.5 rounded-xl text-sm"
+                  >
+                    <ArrowLeft className="w-4 h-4" /> Back
+                  </button>
+                  <button
+                    onClick={() => setWizardStep(3)}
+                    className="flex items-center gap-2 bg-[#FFB300] hover:bg-[#E5A000] text-black font-bold px-6 py-3 rounded-xl text-sm"
+                  >
+                    Continue to Video <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3: VIDEO */}
+            {wizardStep === 3 && (
+              <div className="space-y-6 pt-2">
+                {activeItem.type === 'SHOW' ? (
+                  /* Series Episodes Manager */
+                  <div className="space-y-6">
+                    <div className="bg-[#000000] border border-[#2E2E2E] p-4 rounded-xl space-y-4">
+                      <h4 className="font-bold text-white text-sm">Add Series Episode</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <input
+                          type="number"
+                          placeholder="Season"
+                          value={newEpSeason}
+                          onChange={(e) => setNewEpSeason(Number(e.target.value))}
+                          className="bg-[#0D0D0D] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Episode"
+                          value={newEpNumber}
+                          onChange={(e) => setNewEpNumber(Number(e.target.value))}
+                          className="bg-[#0D0D0D] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Episode Title"
+                          value={newEpTitle}
+                          onChange={(e) => setNewEpTitle(e.target.value)}
+                          className="bg-[#0D0D0D] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 sm:col-span-2"
+                        />
+                      </div>
+                      <button
+                        onClick={handleAddEpisode}
+                        className="bg-[#FFB300] text-black font-bold text-xs px-4 py-2 rounded-lg"
+                      >
+                        + Add Episode
+                      </button>
+                    </div>
+
+                    {/* Episodes List */}
+                    <div className="space-y-3">
+                      <h4 className="font-bold text-white text-sm">Configured Episodes ({episodes.length})</h4>
+                      {episodes.map((ep) => (
+                        <div key={ep.id} className="bg-[#000000] border border-[#2E2E2E] p-4 rounded-xl flex items-center justify-between">
+                          <div>
+                            <p className="font-bold text-white text-sm">S{ep.season_number} E{ep.episode_number}: {ep.title}</p>
+                            <p className="text-xs text-emerald-400 font-semibold mt-1">Status: Ready to publish!</p>
+                          </div>
+                          <button
+                            onClick={() => setEpisodes((prev) => prev.filter((x) => x.id !== ep.id))}
+                            className="text-red-400 p-1 hover:bg-red-500/10 rounded"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  /* Single Movie / Mini's Video Drop Zone */
+                  <div className="space-y-4">
+                    <label className="block text-xs font-semibold text-[#B3B3B3] uppercase tracking-wider">Video Upload Zone</label>
+                    <div className="border-2 border-dashed border-[#2E2E2E] hover:border-[#FFB300] bg-[#000000] p-8 rounded-2xl text-center flex flex-col items-center justify-center space-y-4">
+                      <Film className="w-10 h-10 text-[#FFB300]" />
+                      <div>
+                        <p className="text-sm font-bold text-white">Drag & drop feature video file here</p>
+                        <p className="text-xs text-[#B3B3B3] mt-1">Supports MP4, MOV, MKV formats</p>
+                      </div>
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={(e) => setMovieVideoFile(e.target.files?.[0] || null)}
+                        className="text-xs text-[#B3B3B3]"
+                      />
+                      <button
+                        onClick={handleMovieVideoUpload}
+                        disabled={!movieVideoFile}
+                        className="bg-[#FFB300] hover:bg-[#E5A000] text-black font-bold px-5 py-2.5 rounded-xl text-xs disabled:opacity-40"
+                      >
+                        Upload Video
+                      </button>
+                    </div>
+
+                    {/* Friendly Status Box */}
+                    <div className="bg-[#000000] border border-[#2E2E2E] p-4 rounded-xl space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-[#B3B3B3]">Processing Pipeline Status:</span>
+                        <span className="font-bold text-[#FFB300]">{videoStatusText}</span>
+                      </div>
+
+                      {movieVideoProgress !== null && (
+                        <div className="w-full h-2 bg-[#1F1F1F] rounded-full overflow-hidden">
+                          <div className="h-full bg-[#FFB300] transition-all duration-300" style={{ width: `${movieVideoProgress}%` }} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between pt-4 border-t border-[#2E2E2E]">
+                  <button
+                    onClick={() => setWizardStep(2)}
+                    className="flex items-center gap-2 bg-[#000000] border border-[#2E2E2E] text-white px-5 py-2.5 rounded-xl text-sm"
+                  >
+                    <ArrowLeft className="w-4 h-4" /> Back
+                  </button>
+                  <button
+                    onClick={() => setWizardStep(4)}
+                    className="flex items-center gap-2 bg-[#FFB300] hover:bg-[#E5A000] text-black font-bold px-6 py-3 rounded-xl text-sm"
+                  >
+                    Review Checklist <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 4: REVIEW & PUBLISH */}
+            {wizardStep === 4 && (
+              <div className="space-y-6 pt-2">
+                {publishSuccessMessage ? (
+                  <div className="bg-emerald-500/10 border border-emerald-500/40 p-6 rounded-2xl text-center space-y-4">
+                    <Sparkles className="w-10 h-10 text-emerald-400 mx-auto animate-bounce" />
+                    <h4 className="text-xl font-extrabold text-emerald-400">{publishSuccessMessage}</h4>
+                    <p className="text-sm text-[#B3B3B3]">Title is instantly streamable across all connected mobile client apps.</p>
+                    <button
+                      onClick={() => setIsWizardOpen(false)}
+                      className="bg-emerald-500 text-black font-bold px-6 py-2.5 rounded-xl text-sm"
+                    >
+                      Return to Content Library
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <h4 className="font-bold text-white text-base">Publishing Readiness Checklist</h4>
+
+                    {/* Plain Language Checklist Items */}
+                    <div className="space-y-3">
+                      {checklist.map((item) => (
+                        <div
+                          key={item.key}
+                          className="flex items-center justify-between p-3.5 rounded-xl bg-[#000000] border border-[#2E2E2E]"
+                        >
+                          <div className="flex items-center gap-3">
+                            {item.passed ? (
+                              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                            ) : (
+                              <XCircle className="w-5 h-5 text-red-400 shrink-0" />
+                            )}
+                            <span className={`text-sm ${item.passed ? 'text-white' : 'text-[#B3B3B3]'}`}>
+                              {item.label}
+                            </span>
+                          </div>
+                          <span className={`text-xs font-bold px-2.5 py-0.5 rounded ${
+                            item.passed ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                          }`}>
+                            {item.passed ? 'PASS' : 'MISSING'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex justify-between pt-4 border-t border-[#2E2E2E]">
+                      <button
+                        onClick={() => setWizardStep(3)}
+                        className="flex items-center gap-2 bg-[#000000] border border-[#2E2E2E] text-white px-5 py-2.5 rounded-xl text-sm"
+                      >
+                        <ArrowLeft className="w-4 h-4" /> Back
+                      </button>
+
+                      <div className="relative group">
+                        <button
+                          onClick={handleConfirmPublish}
+                          disabled={!isChecklistReady}
+                          className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-extrabold px-8 py-3.5 rounded-xl text-sm transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+                        >
+                          Publish Title to App
+                        </button>
+                        {!isChecklistReady && (
+                          <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block bg-[#1F1F1F] border border-[#2E2E2E] text-amber-400 text-xs p-2.5 rounded-lg w-64 shadow-xl text-center">
+                            ⚠️ Complete all checklist requirements above before publishing.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* CONFIRM DELETE DIALOG */}
-      {deletingId && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0D0D0D] border border-[#2E2E2E] max-w-md w-full rounded-2xl p-6 space-y-4">
-            <h3 className="text-lg font-bold text-white">Confirm Deletion</h3>
+      {/* DELETE CONFIRMATION DIALOG */}
+      {deletingItem && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0D0D0D] border border-[#2E2E2E] max-w-md w-full rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-red-400">
+              <AlertTriangle className="w-6 h-6 shrink-0" />
+              <h3 className="text-lg font-bold text-white">Delete Content Entry</h3>
+            </div>
             <p className="text-sm text-[#B3B3B3]">
-              Are you sure you want to delete this content catalog entry? This action cannot be undone.
+              This will remove '<strong className="text-white">{deletingItem.title}</strong>' from the app. This can't be undone.
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <button
-                onClick={() => setDeletingId(null)}
+                onClick={() => setDeletingItem(null)}
                 className="px-4 py-2 bg-[#000000] border border-[#2E2E2E] text-white rounded-lg text-sm"
               >
                 Cancel
               </button>
               <button
-                onClick={ConfirmDelete}
-                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg text-sm"
+                onClick={handleConfirmDelete}
+                className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg text-sm"
               >
-                Delete Permanently
+                Delete Title
               </button>
             </div>
           </div>
