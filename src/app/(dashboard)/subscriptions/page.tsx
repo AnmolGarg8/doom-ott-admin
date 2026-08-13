@@ -331,7 +331,7 @@ export default function SubscriptionsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {coupons.map((coupon) => {
-              const usageCount = coupon.usage_count ?? coupon.usageCount ?? 0;
+              const usageCount = coupon.usage_count || 0;
               const usageLimit = coupon.usage_limit || 1000;
               return (
                 <div 
@@ -340,7 +340,7 @@ export default function SubscriptionsPage() {
                 >
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-bold px-2.5 py-1 rounded bg-[#FFB300]/10 text-[#FFB300] border border-[#FFB300]/30">
-                      {coupon.discount_percentage || coupon.discountPercentage}% OFF
+                      {coupon.discount_percentage}% OFF
                     </span>
                     <button
                       onClick={() => handleDeleteCoupon(coupon.id)}
@@ -373,7 +373,7 @@ export default function SubscriptionsPage() {
                       />
                     </div>
                     <p className="text-[11px] text-[#B3B3B3] pt-1">
-                      Valid Until: <strong className="text-white">{coupon.valid_until || coupon.validUntil || '2026-12-31'}</strong>
+                      Valid Until: <strong className="text-white">{coupon.valid_until || '2026-12-31'}</strong>
                     </p>
                   </div>
                 </div>

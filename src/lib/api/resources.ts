@@ -2,24 +2,21 @@ import { apiClient } from './client';
 import axios from 'axios';
 
 export interface OverviewReport {
-  totalUsers: number;
-  activeSubscriptions: number;
-  revenueThisMonth: number;
-  usersGrowthPercentage?: number;
-  subscriptionsGrowthPercentage?: number;
-  revenueGrowthPercentage?: number;
-  topWatchedContent: {
-    id: string;
+  total_users: number;
+  active_subscriptions: number;
+  revenue_this_month: number;
+  top_content: {
+    content_id: string;
     title: string;
-    views: number;
-    type?: string;
+    type: string;
+    watch_count: number;
   }[];
 }
 
 export interface VideoAsset {
   id: string;
   status: 'uploading' | 'processing' | 'ready' | 'failed';
-  videoUrl?: string;
+  video_url?: string;
   progress?: number;
 }
 
@@ -50,6 +47,7 @@ export interface ContentItem {
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   video_asset?: VideoAsset;
   episodes?: Episode[];
+  created_at?: string;
   createdAt?: string;
 }
 
@@ -97,11 +95,8 @@ export interface AdminCoupon {
   id: string;
   code: string;
   discount_percentage: number;
-  discountPercentage?: number;
   valid_until?: string;
-  validUntil?: string;
   usage_count: number;
-  usageCount?: number;
   usage_limit?: number;
   status: 'ACTIVE' | 'EXPIRED';
 }
@@ -109,9 +104,7 @@ export interface AdminCoupon {
 export interface BroadcastNotificationPayload {
   title: string;
   body: string;
-  message?: string;
   target_segment: 'ALL' | 'PREMIUM' | 'INACTIVE';
-  targetUserGroup?: 'ALL' | 'PREMIUM' | 'INACTIVE';
 }
 
 // Reports API

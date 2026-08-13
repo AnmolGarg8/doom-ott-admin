@@ -6,7 +6,6 @@ import {
   CreditCard, 
   DollarSign, 
   TrendingUp, 
-  ArrowUpRight, 
   RefreshCw,
   Film,
   Eye,
@@ -35,7 +34,7 @@ export default function DashboardPage() {
     setFetchError(null);
     try {
       const res = await getOverviewReport();
-      if (res && typeof res.totalUsers === 'number') {
+      if (res && typeof res.total_users === 'number') {
         setData(res);
       } else {
         throw new Error('Invalid overview payload format from server');
@@ -130,12 +129,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-3">
-                <span className="text-3xl font-black text-white tracking-tight">{formatNumber(data.totalUsers)}</span>
-                {data.usersGrowthPercentage && (
-                  <span className="text-xs font-bold text-emerald-400 flex items-center bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    +{data.usersGrowthPercentage}% <ArrowUpRight className="w-3 h-3 ml-0.5" />
-                  </span>
-                )}
+                <span className="text-3xl font-black text-white tracking-tight">{formatNumber(data.total_users)}</span>
               </div>
               <p className="text-xs text-[#B3B3B3] mt-2">Registered platform accounts</p>
             </div>
@@ -149,12 +143,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-3">
-                <span className="text-3xl font-black text-white tracking-tight">{formatNumber(data.activeSubscriptions)}</span>
-                {data.subscriptionsGrowthPercentage && (
-                  <span className="text-xs font-bold text-emerald-400 flex items-center bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    +{data.subscriptionsGrowthPercentage}% <ArrowUpRight className="w-3 h-3 ml-0.5" />
-                  </span>
-                )}
+                <span className="text-3xl font-black text-white tracking-tight">{formatNumber(data.active_subscriptions)}</span>
               </div>
               <p className="text-xs text-[#B3B3B3] mt-2">Current recurring subscribers</p>
             </div>
@@ -168,12 +157,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="mt-4 flex items-baseline gap-3">
-                <span className="text-3xl font-black text-[#FFB300] tracking-tight">{formatCurrency(data.revenueThisMonth)}</span>
-                {data.revenueGrowthPercentage && (
-                  <span className="text-xs font-bold text-emerald-400 flex items-center bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    +{data.revenueGrowthPercentage}% <ArrowUpRight className="w-3 h-3 ml-0.5" />
-                  </span>
-                )}
+                <span className="text-3xl font-black text-[#FFB300] tracking-tight">{formatCurrency(data.revenue_this_month)}</span>
               </div>
               <p className="text-xs text-[#B3B3B3] mt-2">Gross subscription revenue</p>
             </div>
@@ -192,11 +176,11 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {data.topWatchedContent && data.topWatchedContent.length > 0 ? (
+              {data.top_content && data.top_content.length > 0 ? (
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
-                      data={data.topWatchedContent.slice(0, 10)}
+                      data={data.top_content.slice(0, 10)}
                       layout="vertical"
                       margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
                     >
@@ -216,7 +200,7 @@ export default function DashboardPage() {
                         width={110}
                       />
                       <Tooltip 
-                        formatter={(value: any) => [`${formatNumber(Number(value))} streams`, 'Views']}
+                        formatter={(value: any) => [`${formatNumber(Number(value))} streams`, 'Watch Count']}
                         contentStyle={{ 
                           backgroundColor: '#0D0D0D', 
                           borderColor: '#2E2E2E', 
@@ -225,8 +209,8 @@ export default function DashboardPage() {
                           boxShadow: '0 4px 20px rgba(0,0,0,0.5)' 
                         }}
                       />
-                      <Bar dataKey="views" radius={[0, 6, 6, 0]}>
-                        {data.topWatchedContent.slice(0, 10).map((entry, index) => (
+                      <Bar dataKey="watch_count" radius={[0, 6, 6, 0]}>
+                        {data.top_content.slice(0, 10).map((entry, index) => (
                           <Cell 
                             key={`cell-${index}`} 
                             fill={index === 0 ? '#FFB300' : index < 3 ? '#E5A000' : '#8A6300'} 
@@ -250,9 +234,9 @@ export default function DashboardPage() {
                 <p className="text-xs text-[#B3B3B3] mb-4">Detailed view counts</p>
 
                 <div className="space-y-2.5 overflow-y-auto max-h-[300px] pr-1">
-                  {data.topWatchedContent && data.topWatchedContent.slice(0, 10).map((item, idx) => (
+                  {data.top_content && data.top_content.slice(0, 10).map((item, idx) => (
                     <div 
-                      key={item.id || idx}
+                      key={item.content_id || idx}
                       className="flex items-center justify-between p-2.5 rounded-lg bg-[#000000] border border-[#2E2E2E] hover:border-[#FFB300]/50 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -265,7 +249,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="flex items-center gap-1 text-xs font-bold text-[#FFB300] shrink-0 ml-2">
                         <Eye className="w-3.5 h-3.5 text-[#B3B3B3]" />
-                        {formatNumber(item.views)}
+                        {formatNumber(item.watch_count)}
                       </div>
                     </div>
                   ))}
