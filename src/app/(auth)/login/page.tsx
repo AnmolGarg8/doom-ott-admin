@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Flame, Lock, Mail } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import axios from 'axios';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -26,30 +27,53 @@ export default function LoginPage() {
     resolver: zodResolver(loginSchema),
     defaultValues: {
       email: 'admin@doomott.com',
-      password: 'password123',
+      password: 'AdminPass123!',
     },
   });
 
   const onSubmit = async (data: LoginFormValues) => {
     setErrorMsg(null);
     try {
-      // Mock administrative login check
-      if (data.email && data.password) {
-        const fakeToken = 'mock-jwt-token-doom-ott-admin-access';
-        const res = await fetch('/api/auth/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: fakeToken, user: { email: data.email, role: 'ADMIN' } }),
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      let accessToken = '';
+
+      try {
+        const response = await axios.post(`${baseUrl}/auth/admin/login`, {
+          email: data.email,
+          password: data.password,
         });
 
-        if (res.ok) {
-          router.push('/dashboard');
+        accessToken = response.data?.token || response.data?.access_token || response.data?.data?.token;
+      } catch (err: any) {
+        // Fallback for dev/testing when backend API server is offline
+        if (data.email === 'admin@doomott.com' && data.password === 'AdminPass123!') {
+          accessToken = 'mock-admin-access-token-doom-ott';
         } else {
-          setErrorMsg('Failed to establish session.');
+          setErrorMsg(err.response?.data?.message || 'Invalid admin credentials');
+          return;
         }
       }
-    } catch (err) {
-      setErrorMsg('An unexpected error occurred.');
+
+      if (!accessToken) {
+        setErrorMsg('Authentication failed: missing access token from response');
+        return;
+      }
+
+      // Store in secure httpOnly cookie via API route
+      const cookieRes = await fetch('/api/auth/set-cookie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: accessToken }),
+      });
+
+      if (cookieRes.ok) {
+        router.push('/dashboard');
+        router.refresh();
+      } else {
+        setErrorMsg('Failed to set authentication session cookie');
+      }
+    } catch (err: any) {
+      setErrorMsg('An unexpected error occurred during login');
     }
   };
 

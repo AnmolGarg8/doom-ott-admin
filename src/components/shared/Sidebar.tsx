@@ -29,8 +29,9 @@ export function Sidebar() {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/session', { method: 'DELETE' });
+      await fetch('/api/auth/set-cookie', { method: 'DELETE' });
       router.push('/login');
+      router.refresh();
     } catch (err) {
       console.error('Logout error:', err);
     }
