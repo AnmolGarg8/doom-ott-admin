@@ -1,5 +1,20 @@
 import { apiClient } from './client';
 
+export interface OverviewReport {
+  totalUsers: number;
+  activeSubscriptions: number;
+  revenueThisMonth: number;
+  usersGrowthPercentage?: number;
+  subscriptionsGrowthPercentage?: number;
+  revenueGrowthPercentage?: number;
+  topWatchedContent: {
+    id: string;
+    title: string;
+    views: number;
+    type?: string;
+  }[];
+}
+
 export interface User {
   id: string;
   name: string;
@@ -44,6 +59,9 @@ export interface NotificationPayload {
   message: string;
   targetUserGroup: 'ALL' | 'PREMIUM' | 'INACTIVE';
 }
+
+// Reports API
+export const getOverviewReport = async () => (await apiClient.get<OverviewReport>('/admin/reports/overview')).data;
 
 // User API
 export const getUsers = async () => (await apiClient.get<User[]>('/users')).data;
