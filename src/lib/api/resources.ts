@@ -82,6 +82,14 @@ export interface AdminUser {
   createdAt?: string;
 }
 
+export interface PaginatedUsersResponse {
+  items: AdminUser[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 export interface Plan {
   id: string;
   name: string;
@@ -162,7 +170,7 @@ export const publishAdminContent = async (id: string) =>
 
 // User Management API
 export const getAdminUsers = async (params?: { search?: string; page?: number; limit?: number }) => 
-  (await apiClient.get<{ users: AdminUser[]; total: number; page: number } | AdminUser[]>('/admin/users', { params })).data;
+  (await apiClient.get<PaginatedUsersResponse>('/admin/users', { params })).data;
 
 export const toggleBlockUser = async (id: string, is_blocked: boolean) => 
   (await apiClient.patch<AdminUser>(`/admin/users/${id}/block`, { is_blocked })).data;

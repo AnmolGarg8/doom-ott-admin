@@ -22,12 +22,9 @@ export default function UsersPage() {
     setFetchError(null);
     try {
       const res = await getAdminUsers({ search, page, limit: 10 });
-      if (res && 'users' in res && Array.isArray(res.users)) {
-        setUsers(res.users);
-        setTotalCount(res.total || res.users.length);
-      } else if (Array.isArray(res)) {
-        setUsers(res);
-        setTotalCount(res.length);
+      if (res && Array.isArray(res.items)) {
+        setUsers(res.items);
+        setTotalCount(res.total ?? res.items.length);
       } else {
         setUsers([]);
         setTotalCount(0);
@@ -162,15 +159,15 @@ export default function UsersPage() {
                   <tr key={user.id} className="hover:bg-[#1F1F1F]/50 transition-colors">
                     <td className="p-4 flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-[#FFB300]/10 border border-[#FFB300]/30 flex items-center justify-center font-bold text-[#FFB300]">
-                        {user.name.charAt(0)}
+                        {user.name ? user.name.charAt(0) : user.email.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-semibold text-white">{user.name}</p>
+                        <p className="font-semibold text-white">{user.name || 'User'}</p>
                         <p className="text-xs text-[#B3B3B3]">{user.email}</p>
                       </div>
                     </td>
                     <td className="p-4 text-[#B3B3B3]">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#000000] border border-[#2E2E2E] text-xs font-medium">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#000000] border border-[#2E2E2E] text-xs font-medium uppercase">
                         {user.role === 'ADMIN' && <Shield className="w-3.5 h-3.5 text-[#FFB300]" />}
                         {user.role}
                       </span>
@@ -185,7 +182,7 @@ export default function UsersPage() {
                         {user.is_blocked ? 'BLOCKED' : 'ACTIVE'}
                       </span>
                     </td>
-                    <td className="p-4 text-[#B3B3B3] text-xs">{user.created_at || '2026-01-01'}</td>
+                    <td className="p-4 text-[#B3B3B3] text-xs">{user.created_at || user.createdAt || '2026-01-01'}</td>
                     <td className="p-4 text-right">
                       <button
                         onClick={() => setPendingBlockUser(user)}
