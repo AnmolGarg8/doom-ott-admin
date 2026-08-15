@@ -36,6 +36,7 @@ import {
   Episode, 
   ChecklistItem 
 } from '@/lib/api';
+import { extractApiError } from '@/lib/api/client';
 import { useToast } from '@/components/shared/Toast';
 
 // Content Rating Friendly Mapping
@@ -100,7 +101,7 @@ export default function ContentPage() {
       });
       setCatalog(Array.isArray(res) ? res : []);
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || "Couldn't load your content catalog — check your connection and try again";
+      const errorMsg = extractApiError(err, "Couldn't load your content catalog — check your connection and try again");
       setFetchError(errorMsg);
       showToast(errorMsg, 'error', 'Catalog Fetch Failed');
       setCatalog([]);
@@ -115,8 +116,8 @@ export default function ContentPage() {
 
   // Helper friendly formatters
   const getFriendlyTypeLabel = (type?: string) => {
-    if (type === 'SHOW') return 'Series';
-    if (type === 'EPISODE') return "Mini's";
+    if (type === 'series') return 'Series';
+    if (type === 'short') return "Mini's";
     return 'Movie';
   };
 
@@ -133,7 +134,7 @@ export default function ContentPage() {
   const handleStartNewTitle = () => {
     setActiveItem({
       title: '',
-      type: 'MOVIE',
+      type: 'movie',
       synopsis: '',
       genre: ['Action'],
       language: 'English',
@@ -190,12 +191,12 @@ export default function ContentPage() {
       }
       setWizardStep(2);
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Failed to save title details to backend server';
+      const msg = extractApiError(err, 'Failed to save title details to backend server');
       showToast(msg, 'error', 'Save Failed');
     }
   };
 
-  // Step 2 Image Upload Zone (NO BLOB URL FALLBACK ON ERROR)
+  // Step 2 Image Upload Zone
   const handleImageFileDrop = async (file: File, type: 'poster' | 'backdrop') => {
     if (!activeItem.id) {
       showToast('Please complete Step 1 title basics first', 'info');
@@ -223,16 +224,15 @@ export default function ContentPage() {
       setCatalog((prev) => prev.map((c) => (c.id === activeItem.id ? ({ ...c, ...updated } as ContentItem) : c)));
       showToast(`${type === 'poster' ? 'Poster' : 'Backdrop'} uploaded successfully!`, 'success');
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || `Image upload failed for ${type}. Please check your connection and try again.`;
+      const errorMsg = extractApiError(err, `Image upload failed for ${type}. Please check your connection and try again.`);
       showToast(errorMsg, 'error', 'Upload Error');
-      // Do NOT set poster_url/backdrop_url on failure
     } finally {
       if (type === 'poster') setPosterProgress(null);
       else setBackdropProgress(null);
     }
   };
 
-  // Step 3 Video Upload with explicit failure handling
+  // Step 3 Video Upload
   const handleMovieVideoUpload = async () => {
     if (!movieVideoFile || !activeItem.id) return;
 
@@ -262,7 +262,7 @@ export default function ContentPage() {
         throw new Error('Upload URL not provided by server');
       }
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Video upload request failed. Server error.';
+      const msg = extractApiError(err, 'Video upload request failed. Server error.');
       setVideoStatusText('Upload failed — please retry');
       setMovieVideoProgress(null);
       showToast(msg, 'error', 'Video Upload Failed');
@@ -287,7 +287,7 @@ export default function ContentPage() {
     showToast(`Added Episode ${newEp.episode_number}: ${newEp.title}`, 'success');
   };
 
-  // Step 4 Checklist evaluation — DISABLES PUBLISH IF SERVER CALL FAILS
+  // Step 4 Checklist evaluation
   const loadChecklistData = async () => {
     if (!activeItem.id) return;
     setChecklistError(null);
@@ -300,12 +300,11 @@ export default function ContentPage() {
       }
       throw new Error('Invalid checklist response from server');
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Could not verify publish readiness checklist from backend server.';
+      const msg = extractApiError(err, 'Could not verify publish readiness checklist from backend server.');
       setChecklistError(msg);
-      setIsChecklistReady(false); // ALWAYS disable publish when server verification fails
+      setIsChecklistReady(false);
       showToast(msg, 'error', 'Checklist Verification Failed');
 
-      // Show warning checklist items with failed state
       setChecklist([
         { key: 'server_check', label: 'Server readiness verification (Failed to communicate with server)', passed: false }
       ]);
@@ -330,7 +329,7 @@ export default function ContentPage() {
       setPublishSuccessMessage(`🎉 ${activeItem.title} is now live on DOOM OTT`);
       showToast(`${activeItem.title} is now published and live!`, 'success');
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Failed to publish content on backend server';
+      const msg = extractApiError(err, 'Failed to publish content on backend server');
       showToast(msg, 'error', 'Publish Failed');
     }
   };
@@ -344,7 +343,7 @@ export default function ContentPage() {
       showToast(`Deleted '${deletingItem.title}' from catalog`, 'info');
       setDeletingItem(null);
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Failed to delete title from backend server';
+      const msg = extractApiError(err, 'Failed to delete title from backend server');
       showToast(msg, 'error', 'Delete Failed');
     }
   };
@@ -423,9 +422,9 @@ export default function ContentPage() {
             className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2 focus:outline-none focus:border-[#FFB300]"
           >
             <option value="ALL">All Content Types</option>
-            <option value="MOVIE">Movie</option>
-            <option value="SHOW">Series</option>
-            <option value="EPISODE">Mini's</option>
+            <option value="movie">Movie</option>
+            <option value="series">Series</option>
+            <option value="short">Mini's</option>
           </select>
         </div>
       </div>
@@ -611,9 +610,9 @@ export default function ContentPage() {
                   <label className="block text-xs font-semibold text-[#B3B3B3] mb-2 uppercase tracking-wider">Content Format</label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {[
-                      { type: 'MOVIE', title: 'Movie', icon: Film, desc: 'Feature length films and specials' },
-                      { type: 'SHOW', title: 'Series', icon: Tv, desc: 'Episodic shows with seasons' },
-                      { type: 'EPISODE', title: "Mini's", icon: Zap, desc: 'Short videos under 60 seconds' },
+                      { type: 'movie', title: 'Movie', icon: Film, desc: 'Feature length films and specials' },
+                      { type: 'series', title: 'Series', icon: Tv, desc: 'Episodic shows with seasons' },
+                      { type: 'short', title: "Mini's", icon: Zap, desc: 'Short videos under 60 seconds' },
                     ].map((opt) => {
                       const Icon = opt.icon;
                       const isSelected = activeItem.type === opt.type;
@@ -812,7 +811,7 @@ export default function ContentPage() {
             {/* STEP 3: VIDEO */}
             {wizardStep === 3 && (
               <div className="space-y-6 pt-2">
-                {activeItem.type === 'SHOW' ? (
+                {activeItem.type === 'series' ? (
                   /* Series Episodes Manager */
                   <div className="space-y-6">
                     <div className="bg-[#000000] border border-[#2E2E2E] p-4 rounded-xl space-y-4">

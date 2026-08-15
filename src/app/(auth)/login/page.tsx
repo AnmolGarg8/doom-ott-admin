@@ -7,6 +7,7 @@ import { Flame, Lock, Mail } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import axios from 'axios';
+import { extractApiError } from '@/lib/api/client';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -49,7 +50,7 @@ export default function LoginPage() {
         if (data.email === 'admin@doomott.com' && data.password === 'AdminPass123!') {
           accessToken = 'mock-admin-access-token-doom-ott';
         } else {
-          setErrorMsg(err.response?.data?.message || 'Invalid admin credentials');
+          setErrorMsg(extractApiError(err, 'Invalid admin credentials'));
           return;
         }
       }
@@ -73,7 +74,7 @@ export default function LoginPage() {
         setErrorMsg('Failed to set authentication session cookie');
       }
     } catch (err: any) {
-      setErrorMsg('An unexpected error occurred during login');
+      setErrorMsg(extractApiError(err, 'An unexpected error occurred during login'));
     }
   };
 

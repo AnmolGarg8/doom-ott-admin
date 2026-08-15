@@ -31,7 +31,7 @@ export interface Episode {
 export interface ContentItem {
   id: string;
   title: string;
-  type: 'MOVIE' | 'SHOW' | 'EPISODE'; // SHOW maps to "Series", EPISODE maps to "Mini's" in friendly UI
+  type: 'movie' | 'series' | 'short'; // ContentType enum matching backend: movie, series, short
   synopsis?: string;
   cast?: string[];
   genre?: string[] | string;

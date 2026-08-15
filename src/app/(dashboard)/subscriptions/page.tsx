@@ -30,6 +30,7 @@ import {
   Plan, 
   AdminCoupon 
 } from '@/lib/api';
+import { extractApiError } from '@/lib/api/client';
 import { useToast } from '@/components/shared/Toast';
 
 // Plan Schema
@@ -89,12 +90,14 @@ export default function SubscriptionsPage() {
     setLoading(true);
     setFetchError(null);
     let errorCount = 0;
+    let lastErrorMsg = '';
 
     try {
       const plansRes = await getAdminPlans();
       setPlans(Array.isArray(plansRes) ? plansRes : []);
     } catch (e: any) {
       errorCount++;
+      lastErrorMsg = extractApiError(e, 'Failed to fetch subscription plans');
       setPlans([]);
     }
 
@@ -103,13 +106,13 @@ export default function SubscriptionsPage() {
       setCoupons(Array.isArray(couponsRes) ? couponsRes : []);
     } catch (e: any) {
       errorCount++;
+      if (!lastErrorMsg) lastErrorMsg = extractApiError(e, 'Failed to fetch promotional coupons');
       setCoupons([]);
     }
 
     if (errorCount > 0) {
-      const msg = 'Could not load subscription plans or coupons from backend server';
-      setFetchError(msg);
-      showToast(msg, 'error', 'Subscription Fetch Error');
+      setFetchError(lastErrorMsg);
+      showToast(lastErrorMsg, 'error', 'Subscription Fetch Error');
     }
     setLoading(false);
   };
@@ -149,7 +152,7 @@ export default function SubscriptionsPage() {
       }
       setIsPlanModalOpen(false);
     } catch (e: any) {
-      const msg = e.response?.data?.message || 'Failed to save subscription plan to backend server';
+      const msg = extractApiError(e, 'Failed to save subscription plan to backend server');
       showToast(msg, 'error', 'Plan Save Failed');
     }
   };
@@ -160,7 +163,7 @@ export default function SubscriptionsPage() {
       setPlans((prev) => prev.filter((p) => p.id !== id));
       showToast('Plan deleted successfully', 'info');
     } catch (e: any) {
-      const msg = e.response?.data?.message || 'Failed to delete plan from backend server';
+      const msg = extractApiError(e, 'Failed to delete plan from backend server');
       showToast(msg, 'error', 'Delete Failed');
     }
   };
@@ -184,7 +187,7 @@ export default function SubscriptionsPage() {
       setIsCouponModalOpen(false);
       resetCoupon();
     } catch (e: any) {
-      const msg = e.response?.data?.message || 'Failed to create promo coupon on backend server';
+      const msg = extractApiError(e, 'Failed to create promo coupon on backend server');
       showToast(msg, 'error', 'Coupon Creation Failed');
     }
   };
@@ -195,7 +198,7 @@ export default function SubscriptionsPage() {
       setCoupons((prev) => prev.filter((c) => c.id !== id));
       showToast('Coupon deleted successfully', 'info');
     } catch (e: any) {
-      const msg = e.response?.data?.message || 'Failed to delete coupon from backend server';
+      const msg = extractApiError(e, 'Failed to delete coupon from backend server');
       showToast(msg, 'error', 'Delete Failed');
     }
   };

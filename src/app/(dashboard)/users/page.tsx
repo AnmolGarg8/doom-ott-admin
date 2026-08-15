@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Search, Shield, Ban, CheckCircle, ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, AlertCircle, Users as UsersIcon } from 'lucide-react';
 import { getAdminUsers, toggleBlockUser, AdminUser } from '@/lib/api';
+import { extractApiError } from '@/lib/api/client';
 import { useToast } from '@/components/shared/Toast';
 
 export default function UsersPage() {
@@ -30,7 +31,7 @@ export default function UsersPage() {
         setTotalCount(0);
       }
     } catch (err: any) {
-      const msg = err.response?.data?.message || "Couldn't load user directory from backend server";
+      const msg = extractApiError(err, "Couldn't load user directory from backend server");
       setFetchError(msg);
       showToast(msg, 'error', 'Users Fetch Error');
       setUsers([]);
@@ -60,7 +61,7 @@ export default function UsersPage() {
         'success'
       );
     } catch (err: any) {
-      const msg = err.response?.data?.message || "Couldn't update this user's access — please try again";
+      const msg = extractApiError(err, "Couldn't update this user's access — please try again");
       showToast(msg, 'error', 'Action Failed');
       // Rollback optimistic update: user list remains untouched
     } finally {

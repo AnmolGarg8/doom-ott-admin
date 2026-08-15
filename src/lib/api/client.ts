@@ -9,6 +9,37 @@ export const apiClient = axios.create({
   },
 });
 
+// Helper function to extract readable error message from Axios / FastAPI response errors
+export function extractApiError(err: any, fallbackMessage: string = 'An unexpected error occurred'): string {
+  if (!err) return fallbackMessage;
+
+  const detail = err.response?.data?.detail;
+
+  if (typeof detail === 'string') {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    // Pydantic validation errors format: [{ loc: [...], msg: "...", type: "..." }]
+    const messages = detail.map((item) => {
+      if (typeof item === 'string') return item;
+      const field = Array.isArray(item.loc) ? item.loc.filter((l: any) => l !== 'body').join('.') : '';
+      return field ? `${field}: ${item.msg}` : item.msg || JSON.stringify(item);
+    });
+    return messages.join(' | ');
+  }
+
+  if (err.response?.data?.message && typeof err.response.data.message === 'string') {
+    return err.response.data.message;
+  }
+
+  if (err.message && typeof err.message === 'string') {
+    return err.message;
+  }
+
+  return fallbackMessage;
+}
+
 // Attach authorization token via interceptor
 apiClient.interceptors.request.use(
   async (config) => {

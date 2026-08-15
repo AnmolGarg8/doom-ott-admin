@@ -21,6 +21,7 @@ import {
   Cell
 } from 'recharts';
 import { getOverviewReport, OverviewReport } from '@/lib/api';
+import { extractApiError } from '@/lib/api/client';
 import { useToast } from '@/components/shared/Toast';
 
 export default function DashboardPage() {
@@ -40,7 +41,7 @@ export default function DashboardPage() {
         throw new Error('Invalid overview payload format from server');
       }
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Could not reach server — live metrics unavailable';
+      const msg = extractApiError(err, 'Could not reach server — live metrics unavailable');
       setFetchError(msg);
       showToast(msg, 'error', 'Network Connection Error');
       setData(null);
