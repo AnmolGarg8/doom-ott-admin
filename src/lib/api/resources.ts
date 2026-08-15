@@ -102,7 +102,7 @@ export interface Plan {
 export interface AdminCoupon {
   id: string;
   code: string;
-  discount_type: 'PERCENTAGE' | 'FLAT';
+  discount_type: 'percentage' | 'flat';
   value: number;
   expiry?: string;
   usage_limit?: number;

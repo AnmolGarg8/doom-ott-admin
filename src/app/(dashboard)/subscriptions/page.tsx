@@ -41,10 +41,10 @@ const planSchema = z.object({
   max_devices: z.coerce.number().min(1, 'At least 1 device is required'),
 });
 
-// Coupon Schema matching backend CouponCreate schema exactly
+// Coupon Schema matching backend CouponCreate schema exactly (lowercase enum values)
 const couponSchema = z.object({
   code: z.string().min(3, 'Code must be at least 3 characters'),
-  discount_type: z.enum(['PERCENTAGE', 'FLAT']),
+  discount_type: z.enum(['percentage', 'flat']),
   value: z.coerce.number().min(0.01, 'Discount value must be greater than 0'),
   usage_limit: z.coerce.number().min(1, 'Usage limit must be at least 1'),
   expiry: z.string().min(1, 'Expiration date required'),
@@ -85,7 +85,7 @@ export default function SubscriptionsPage() {
     formState: { errors: couponErrors, isSubmitting: isSubmittingCoupon }
   } = useForm<CouponFormValues>({
     resolver: zodResolver(couponSchema),
-    defaultValues: { code: '', discount_type: 'PERCENTAGE', value: 20, usage_limit: 500, expiry: '2026-12-31' }
+    defaultValues: { code: '', discount_type: 'percentage', value: 20, usage_limit: 500, expiry: '2026-12-31' }
   });
 
   const selectedDiscountType = watchCoupon('discount_type');
@@ -348,7 +348,7 @@ export default function SubscriptionsPage() {
               const timesUsed = coupon.times_used || 0;
               const usageLimit = coupon.usage_limit || 1000;
               const expired = isCouponExpired(coupon.expiry);
-              const discountText = coupon.discount_type === 'PERCENTAGE' 
+              const discountText = coupon.discount_type === 'percentage' 
                 ? `${coupon.value}% OFF` 
                 : `₹${coupon.value} OFF`;
 
@@ -514,14 +514,14 @@ export default function SubscriptionsPage() {
                   {...registerCoupon('discount_type')}
                   className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
                 >
-                  <option value="PERCENTAGE">Percentage (%)</option>
-                  <option value="FLAT">Flat Amount (₹ / $)</option>
+                  <option value="percentage">Percentage (%)</option>
+                  <option value="flat">Flat Amount (₹ / $)</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">
-                  Discount Value ({selectedDiscountType === 'PERCENTAGE' ? '% off' : '₹ off'})
+                  Discount Value ({selectedDiscountType === 'percentage' ? '% off' : '₹ off'})
                 </label>
                 <input
                   type="number"
