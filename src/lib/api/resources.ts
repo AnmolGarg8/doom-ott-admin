@@ -102,11 +102,11 @@ export interface Plan {
 export interface AdminCoupon {
   id: string;
   code: string;
-  discount_percentage: number;
-  valid_until?: string;
-  usage_count: number;
+  discount_type: 'PERCENTAGE' | 'FLAT';
+  value: number;
+  expiry?: string;
   usage_limit?: number;
-  status: 'ACTIVE' | 'EXPIRED';
+  times_used?: number;
 }
 
 export interface BroadcastNotificationPayload {

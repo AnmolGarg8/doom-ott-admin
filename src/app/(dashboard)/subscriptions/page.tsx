@@ -41,12 +41,13 @@ const planSchema = z.object({
   max_devices: z.coerce.number().min(1, 'At least 1 device is required'),
 });
 
-// Coupon Schema
+// Coupon Schema matching backend CouponCreate schema exactly
 const couponSchema = z.object({
   code: z.string().min(3, 'Code must be at least 3 characters'),
-  discount_percentage: z.coerce.number().min(1).max(100, 'Discount must be 1-100%'),
+  discount_type: z.enum(['PERCENTAGE', 'FLAT']),
+  value: z.coerce.number().min(0.01, 'Discount value must be greater than 0'),
   usage_limit: z.coerce.number().min(1, 'Usage limit must be at least 1'),
-  valid_until: z.string().min(1, 'Expiration date required'),
+  expiry: z.string().min(1, 'Expiration date required'),
 });
 
 type PlanFormValues = z.infer<typeof planSchema>;
@@ -80,11 +81,14 @@ export default function SubscriptionsPage() {
     register: registerCoupon,
     handleSubmit: handleSubmitCoupon,
     reset: resetCoupon,
+    watch: watchCoupon,
     formState: { errors: couponErrors, isSubmitting: isSubmittingCoupon }
   } = useForm<CouponFormValues>({
     resolver: zodResolver(couponSchema),
-    defaultValues: { code: '', discount_percentage: 20, usage_limit: 500, valid_until: '2026-12-31' }
+    defaultValues: { code: '', discount_type: 'PERCENTAGE', value: 20, usage_limit: 500, expiry: '2026-12-31' }
   });
+
+  const selectedDiscountType = watchCoupon('discount_type');
 
   const fetchPlansAndCoupons = async () => {
     setLoading(true);
@@ -172,16 +176,15 @@ export default function SubscriptionsPage() {
   const onSaveCoupon = async (data: CouponFormValues) => {
     const payload: Partial<AdminCoupon> = {
       code: data.code.toUpperCase(),
-      discount_percentage: data.discount_percentage,
+      discount_type: data.discount_type,
+      value: data.value,
       usage_limit: data.usage_limit,
-      valid_until: data.valid_until,
-      usage_count: 0,
-      status: 'ACTIVE',
+      expiry: data.expiry,
     };
 
     try {
       const created = await createAdminCoupon(payload);
-      const newCoupon = created || ({ id: `cop-${Date.now()}`, ...payload } as AdminCoupon);
+      const newCoupon = created || ({ id: `cop-${Date.now()}`, ...payload, times_used: 0 } as AdminCoupon);
       setCoupons((prev) => [newCoupon, ...prev]);
       showToast(`Promo coupon '${payload.code}' created`, 'success');
       setIsCouponModalOpen(false);
@@ -207,6 +210,14 @@ export default function SubscriptionsPage() {
     navigator.clipboard.writeText(code);
     setCopiedCodeId(id);
     setTimeout(() => setCopiedCodeId(null), 2000);
+  };
+
+  const isCouponExpired = (expiryDateStr?: string) => {
+    if (!expiryDateStr) return false;
+    const exp = new Date(expiryDateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return exp < today;
   };
 
   return (
@@ -334,8 +345,13 @@ export default function SubscriptionsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {coupons.map((coupon) => {
-              const usageCount = coupon.usage_count || 0;
+              const timesUsed = coupon.times_used || 0;
               const usageLimit = coupon.usage_limit || 1000;
+              const expired = isCouponExpired(coupon.expiry);
+              const discountText = coupon.discount_type === 'PERCENTAGE' 
+                ? `${coupon.value}% OFF` 
+                : `₹${coupon.value} OFF`;
+
               return (
                 <div 
                   key={coupon.id} 
@@ -343,14 +359,23 @@ export default function SubscriptionsPage() {
                 >
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-bold px-2.5 py-1 rounded bg-[#FFB300]/10 text-[#FFB300] border border-[#FFB300]/30">
-                      {coupon.discount_percentage}% OFF
+                      {discountText}
                     </span>
-                    <button
-                      onClick={() => handleDeleteCoupon(coupon.id)}
-                      className="p-1 text-[#B3B3B3] hover:text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
+                        expired 
+                          ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      }`}>
+                        {expired ? 'EXPIRED' : 'ACTIVE'}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteCoupon(coupon.id)}
+                        className="p-1 text-[#B3B3B3] hover:text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="bg-[#000000] border border-[#2E2E2E] p-3 rounded-xl flex items-center justify-between mb-4">
@@ -363,20 +388,20 @@ export default function SubscriptionsPage() {
                     </button>
                   </div>
 
-                  {/* Usage Count vs Limit */}
+                  {/* Times Used vs Usage Limit */}
                   <div className="space-y-1.5 text-xs text-[#B3B3B3]">
                     <div className="flex justify-between">
-                      <span>Usage:</span>
-                      <span className="font-bold text-white">{usageCount} / {usageLimit}</span>
+                      <span>Times Used:</span>
+                      <span className="font-bold text-white">{timesUsed} / {usageLimit}</span>
                     </div>
                     <div className="w-full h-1.5 bg-[#1F1F1F] rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-[#FFB300]" 
-                        style={{ width: `${Math.min(100, (usageCount / usageLimit) * 100)}%` }} 
+                        style={{ width: `${Math.min(100, (timesUsed / usageLimit) * 100)}%` }} 
                       />
                     </div>
                     <p className="text-[11px] text-[#B3B3B3] pt-1">
-                      Valid Until: <strong className="text-white">{coupon.valid_until || '2026-12-31'}</strong>
+                      Expiry Date: <strong className="text-white">{coupon.expiry || '2026-12-31'}</strong>
                     </p>
                   </div>
                 </div>
@@ -476,7 +501,7 @@ export default function SubscriptionsPage() {
                 <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Coupon Code</label>
                 <input
                   type="text"
-                  placeholder="e.g. SPECIAL50"
+                  placeholder="e.g. WELCOME50"
                   {...registerCoupon('code')}
                   className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300] uppercase"
                 />
@@ -484,12 +509,27 @@ export default function SubscriptionsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Discount Percentage (%)</label>
+                <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Discount Type</label>
+                <select
+                  {...registerCoupon('discount_type')}
+                  className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
+                >
+                  <option value="PERCENTAGE">Percentage (%)</option>
+                  <option value="FLAT">Flat Amount (₹ / $)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">
+                  Discount Value ({selectedDiscountType === 'PERCENTAGE' ? '% off' : '₹ off'})
+                </label>
                 <input
                   type="number"
-                  {...registerCoupon('discount_percentage')}
+                  step="0.01"
+                  {...registerCoupon('value')}
                   className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
                 />
+                {couponErrors.value && <p className="text-xs text-red-400 mt-1">{couponErrors.value.message}</p>}
               </div>
 
               <div>
@@ -499,15 +539,17 @@ export default function SubscriptionsPage() {
                   {...registerCoupon('usage_limit')}
                   className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
                 />
+                {couponErrors.usage_limit && <p className="text-xs text-red-400 mt-1">{couponErrors.usage_limit.message}</p>}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Expiration Date</label>
+                <label className="block text-xs font-semibold text-[#B3B3B3] mb-1">Expiration Date (expiry)</label>
                 <input
                   type="date"
-                  {...registerCoupon('valid_until')}
+                  {...registerCoupon('expiry')}
                   className="w-full bg-[#000000] border border-[#2E2E2E] text-white text-sm rounded-lg p-2.5 focus:outline-none focus:border-[#FFB300]"
                 />
+                {couponErrors.expiry && <p className="text-xs text-red-400 mt-1">{couponErrors.expiry.message}</p>}
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
